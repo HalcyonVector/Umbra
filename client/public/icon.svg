@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <defs>
+    <clipPath id="planet-clip">
+      <circle cx="96" cy="96" r="58" />
+    </clipPath>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#eef2ff" stop-opacity="0.9" />
+      <stop offset="100%" stop-color="#eef2ff" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="192" height="192" rx="34" fill="#05060c" />
+
+  <g clip-path="url(#planet-clip)">
+    <rect x="8" y="8" width="176" height="176" fill="#4fb8e8" />
+    <path d="M38 38 L154 154 L38 154 Z" fill="#f2c14e" />
+  </g>
+  <circle cx="96" cy="96" r="58" fill="none" stroke="#171b30" stroke-width="2" />
+
+  <ellipse cx="96" cy="96" rx="82" ry="34" fill="none" stroke="#cdd6f4" stroke-width="3" opacity="0.85" transform="rotate(-18 96 96)" />
+
+  <circle cx="150" cy="70" r="10" fill="url(#glow)" />
+  <circle cx="150" cy="70" r="4.2" fill="#eef2ff" />
+</svg>

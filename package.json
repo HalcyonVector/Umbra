@@ -1,0 +1,17 @@
+{
+  "name": "umbra",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Procedural generative soundscape driven by the ISS's real orbit: live position, derived altitude/velocity, the day/night terminator, and who's currently aboard (Open Notify).",
+  "scripts": {
+    "install:all": "npm install --prefix server && npm install --prefix client",
+    "dev": "concurrently -k -n SERVER,CLIENT -c blue,green \"cross-env PORT=3003 npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "build": "npm run install:all && npm run build --prefix client",
+    "start": "npm run start --prefix server",
+    "test": "npm run test --prefix server && npm run test --prefix client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3"
+  }
+}
