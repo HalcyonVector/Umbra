@@ -2,7 +2,7 @@
   "name": "umbra",
   "private": true,
   "version": "1.0.0",
-  "description": "Procedural generative soundscape driven by the ISS's real orbit: live position, derived altitude/velocity, the day/night terminator, and who's currently aboard (Open Notify).",
+  "description": "A living cartography and visibility predictor for the ISS's real orbit: a growing ground-track weave, real orbital-mechanics-derived telemetry, and a genuine \"when can I see it from here\" pass predictor (Open Notify).",
   "scripts": {
     "install:all": "npm install --prefix server && npm install --prefix client",
     "dev": "concurrently -k -n SERVER,CLIENT -c blue,green \"cross-env PORT=3003 npm run dev --prefix server\" \"npm run dev --prefix client\"",

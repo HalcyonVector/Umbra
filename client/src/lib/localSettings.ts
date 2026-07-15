@@ -1,67 +1,53 @@
-import type { MixLayer } from '../audio/AudioEngine';
-
-const VOLUME_KEY = 'umbra:volume';
-const MIX_KEY = 'umbra:mix';
-const SENSITIVITY_KEY = 'umbra:sensitivity';
+const MIN_ELEVATION_KEY = 'umbra:minElevation';
+const OBSERVER_KEY = 'umbra:observer';
 const ONBOARDED_KEY = 'umbra:onboarded';
-const MIX_LAYERS: MixLayer[] = ['drone', 'crossing', 'beacon'];
 
 /** Small persisted-settings helpers: local-only, best-effort, never throw. A blocked or full
  * localStorage just means the app falls back to defaults instead of crashing. */
 
-export function loadStoredVolume(fallback: number): number {
+export function loadStoredMinElevation(fallback: number): number {
   try {
-    const raw = localStorage.getItem(VOLUME_KEY);
+    const raw = localStorage.getItem(MIN_ELEVATION_KEY);
     if (raw === null) return fallback;
     const value = Number(raw);
-    return Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback;
+    return Number.isFinite(value) && value >= 0 && value <= 90 ? value : fallback;
   } catch {
     return fallback;
   }
 }
 
-export function saveStoredVolume(volume: number): void {
+export function saveStoredMinElevation(deg: number): void {
   try {
-    localStorage.setItem(VOLUME_KEY, String(volume));
+    localStorage.setItem(MIN_ELEVATION_KEY, String(deg));
   } catch {
     // quota exceeded or storage disabled; not worth surfacing to the user
   }
 }
 
-export function loadStoredMix(fallback: Record<MixLayer, number>): Record<MixLayer, number> {
+export interface StoredObserver {
+  lat: number;
+  lon: number;
+}
+
+export function loadStoredObserver(): StoredObserver | null {
   try {
-    const raw = localStorage.getItem(MIX_KEY);
-    if (raw === null) return fallback;
+    const raw = localStorage.getItem(OBSERVER_KEY);
+    if (raw === null) return null;
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const valid = MIX_LAYERS.every((layer) => typeof parsed[layer] === 'number' && Number.isFinite(parsed[layer]));
-    return valid ? (parsed as Record<MixLayer, number>) : fallback;
+    const lat = parsed.lat;
+    const lon = parsed.lon;
+    if (typeof lat !== 'number' || !Number.isFinite(lat) || lat < -90 || lat > 90) return null;
+    if (typeof lon !== 'number' || !Number.isFinite(lon) || lon < -180 || lon > 180) return null;
+    return { lat, lon };
   } catch {
-    return fallback;
+    return null;
   }
 }
 
-export function saveStoredMix(mix: Record<MixLayer, number>): void {
+export function saveStoredObserver(observer: StoredObserver | null): void {
   try {
-    localStorage.setItem(MIX_KEY, JSON.stringify(mix));
-  } catch {
-    // quota exceeded or storage disabled; not worth surfacing to the user
-  }
-}
-
-export function loadStoredSensitivity(fallback: number): number {
-  try {
-    const raw = localStorage.getItem(SENSITIVITY_KEY);
-    if (raw === null) return fallback;
-    const value = Number(raw);
-    return Number.isFinite(value) && value >= 2 && value <= 15 ? value : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-export function saveStoredSensitivity(sensitivityDeg: number): void {
-  try {
-    localStorage.setItem(SENSITIVITY_KEY, String(sensitivityDeg));
+    if (observer === null) localStorage.removeItem(OBSERVER_KEY);
+    else localStorage.setItem(OBSERVER_KEY, JSON.stringify(observer));
   } catch {
     // quota exceeded or storage disabled; not worth surfacing to the user
   }

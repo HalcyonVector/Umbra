@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { listPresets, savePreset, deletePreset } from './presetsStore';
+import { listLocations, saveLocation, deleteLocation } from './presetsStore';
 
 describe('presetsStore (offline fallback)', () => {
   beforeEach(() => {
@@ -14,22 +14,22 @@ describe('presetsStore (offline fallback)', () => {
   });
 
   it('falls back to localStorage when the server is unreachable, and says so', async () => {
-    const saved = await savePreset('low-orbit', { crossingSensitivityDeg: 4 });
+    const saved = await saveLocation('Home', { lat: 40.7128, lon: -74.006 });
     expect(saved.source).toBe('local');
-    expect(saved.preset.name).toBe('low-orbit');
+    expect(saved.location.name).toBe('Home');
 
-    const listed = await listPresets();
+    const listed = await listLocations();
     expect(listed.source).toBe('local');
-    expect(listed.presets).toHaveLength(1);
-    expect(listed.presets[0].params.crossingSensitivityDeg).toBe(4);
+    expect(listed.locations).toHaveLength(1);
+    expect(listed.locations[0].params).toEqual({ lat: 40.7128, lon: -74.006 });
   });
 
   it('deletes from the local fallback store', async () => {
-    await savePreset('to-delete', { crossingSensitivityDeg: 5 });
-    const del = await deletePreset('to-delete');
+    await saveLocation('To Delete', { lat: 0, lon: 0 });
+    const del = await deleteLocation('To Delete');
     expect(del.source).toBe('local');
 
-    const listed = await listPresets();
-    expect(listed.presets).toHaveLength(0);
+    const listed = await listLocations();
+    expect(listed.locations).toHaveLength(0);
   });
 });

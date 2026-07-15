@@ -1,93 +1,92 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { feature } from 'topojson-client';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import worldCountries from 'world-atlas/countries-110m.json';
-import { AudioEngine, type MixLayer } from './audio/AudioEngine';
 import { useIssFeed } from './inputs/useIssFeed';
 import { useCrewFeed } from './inputs/useCrewFeed';
-import { useRecorder } from './inputs/useRecorder';
 import { useWakeLock } from './inputs/useWakeLock';
-import { useMediaSession } from './inputs/useMediaSession';
-import { mapTelemetryToParams, mapCrossingToTriggerParams, resolveSolarState } from './mapping/parameterMapping';
-import { solarElevationDeg, isDaylight as computeIsDaylight, terminatorProximity as computeTerminatorProximity, predictNextCrossing } from './orbital/solarTerminator';
-import { orbitalPhase as computeOrbitalPhase, groundSpeedToOrbitalSpeedKmS, ISS_MEAN_ALTITUDE_KM } from './orbital/orbitalMechanics';
+import { solarElevationDeg } from './orbital/solarTerminator';
+import { ISS_MEAN_ALTITUDE_KM, orbitalPhase as fallbackOrbitalPhase, groundSpeedToOrbitalSpeedKmS } from './orbital/orbitalMechanics';
 import { computeGroundSpeedKmh, computeBearingDeg, pruneTrail, type TrackPoint } from './orbital/groundTrack';
 import { findCountryAt, computeBBox, type CountryFeature, type CountryGeometry } from './orbital/countryLookup';
-import { listPresets, savePreset, deletePreset } from './lib/presetsStore';
-import type { PresetSource } from './lib/presetsStore';
+import { deriveOrbitalElements, propagateSubSatellitePoint, orbitalPhaseAt, type OrbitalElements } from './orbital/groundTrackPropagator';
+import { predictTerminatorCrossings, predictVisiblePasses } from './orbital/eventPrediction';
+import { loadTrail, saveTrail } from './lib/trailStore';
+import { listLocations, saveLocation, deleteLocation, type LocationSource } from './lib/presetsStore';
 import { buildShareUrl, readShareParamsFromLocation } from './lib/shareLink';
 import { copyToClipboard } from './lib/clipboard';
+import { exportMapAsPng } from './lib/exportMap';
 import {
-  hasSeenOnboarding, loadStoredMix, loadStoredSensitivity, loadStoredVolume, markOnboardingSeen,
-  saveStoredMix, saveStoredSensitivity, saveStoredVolume,
+  hasSeenOnboarding, loadStoredMinElevation, loadStoredObserver, markOnboardingSeen,
+  saveStoredMinElevation, saveStoredObserver,
 } from './lib/localSettings';
 import { MapScene } from './components/MapScene';
-import { NowPlayingTray } from './components/NowPlayingTray';
+import { StatusTray } from './components/StatusTray';
 import { OnboardingHint } from './components/OnboardingHint';
-import { ControlPanel, type SimState } from './components/ControlPanel';
-import { StatusPanel } from './components/StatusPanel';
-import type { EngineConfig, OrbitalTelemetry, Preset } from './types';
+import { MissionDashboard } from './components/MissionDashboard';
+import { PassPredictor, type GeolocationStatus } from './components/PassPredictor';
+import type { LocationPreset, OrbitalTelemetry, SolarState } from './types';
 import './App.css';
 
-const DEFAULT_SIM: SimState = { lat: 0, lon: 0, utcHour: 12 };
-const DEFAULT_MIX: Record<MixLayer, number> = { drone: 1, crossing: 1, beacon: 0.6 };
-const MAX_TRAIL_POINTS = 400;
-const TRAIL_RETENTION_MS = 20 * 60_000; // ~20 minutes of ground track — a meaningful arc without unbounded growth
+const TRAIL_RETENTION_MS = 24 * 60 * 60_000;
+const CROSSING_WINDOW_MS = 6 * 60 * 60_000;
+const PASS_WINDOW_MS = 24 * 60 * 60_000;
+const PREDICTED_TRAIL_HORIZON_MS = 3 * 60 * 60_000;
+const PREDICTED_TRAIL_STEP_MS = 2 * 60_000;
+const TWILIGHT_BAND_DEG = 8;
 
-function buildSimulatedDate(baseNowMs: number, utcHour: number): Date {
-  const d = new Date(baseNowMs);
-  d.setUTCHours(Math.floor(utcHour), Math.round((utcHour % 1) * 60), 0, 0);
-  return d;
+function resolveSolarState(isDaylight: boolean, elevationDeg: number): SolarState {
+  if (Math.abs(elevationDeg) < TWILIGHT_BAND_DEG) return 'twilight';
+  return isDaylight ? 'day' : 'night';
 }
 
 export default function App() {
-  const engineRef = useRef<AudioEngine | null>(null);
-  if (!engineRef.current) engineRef.current = new AudioEngine();
-
   const mainRegionRef = useRef<HTMLDivElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const drawerCloseRef = useRef<HTMLButtonElement>(null);
   const drawerToggleRef = useRef<HTMLButtonElement>(null);
   const drawerHasMounted = useRef(false);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const nightCanvasRef = useRef<HTMLCanvasElement>(null);
+  const prevPositionRef = useRef<TrackPoint | null>(null);
+  const prevDaylightRef = useRef<boolean | null>(null);
 
-  const [started, setStarted] = useState(false);
-  const [volume, setVolume] = useState(() => loadStoredVolume(0.7));
-  const [simulate, setSimulate] = useState(false);
-  const [sim, setSim] = useState<SimState>(DEFAULT_SIM);
-  const [mix, setMix] = useState<Record<MixLayer, number>>(() => loadStoredMix(DEFAULT_MIX));
-  const [crossingSensitivityDeg, setCrossingSensitivityDeg] = useState(() => loadStoredSensitivity(6));
-  const [presets, setPresets] = useState<Preset[]>([]);
-  const [presetsSource, setPresetsSource] = useState<PresetSource>('server');
-  const [presetName, setPresetName] = useState('');
+  const [observer, setObserverState] = useState<{ lat: number; lon: number } | null>(() => loadStoredObserver());
+  const [minElevationDeg, setMinElevationDeg] = useState(() => loadStoredMinElevation(10));
+  const [geolocationStatus, setGeolocationStatus] = useState<GeolocationStatus>('idle');
+  const [locations, setLocations] = useState<LocationPreset[]>([]);
+  const [locationsSource, setLocationsSource] = useState<LocationSource>('server');
+  const [locationName, setLocationName] = useState('');
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
-  const [trail, setTrail] = useState<TrackPoint[]>([]);
+  const [trail, setTrail] = useState<TrackPoint[]>(() => loadTrail());
   const [groundSpeedKmh, setGroundSpeedKmh] = useState<number | null>(null);
   const [bearingDeg, setBearingDeg] = useState<number | null>(null);
+  const [orbitalElements, setOrbitalElements] = useState<OrbitalElements | null>(null);
   const [crossingPulse, setCrossingPulse] = useState<{ key: number; direction: 'sunrise' | 'sunset' } | null>(null);
+  const [sunriseCount, setSunriseCount] = useState(0);
+  const [sunsetCount, setSunsetCount] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
-
-  const prevPositionRef = useRef<TrackPoint | null>(null);
-  const prevDaylightRef = useRef<boolean | null>(null);
-  const startedRef = useRef(started);
-  startedRef.current = started;
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const dismissOnboarding = () => {
     setShowOnboarding(false);
     markOnboardingSeen();
   };
 
-  useWakeLock(started);
+  // Leave-it-open-and-watch is the whole point here, so the wake lock is unconditional.
+  useWakeLock(true);
 
-  // A shared crossing-sensitivity value in the URL is applied once on load,
-  // same idea as Fault-Line's share-link mechanism, then the URL is cleaned
-  // up so a refresh doesn't reapply it.
   useEffect(() => {
     const shared = readShareParamsFromLocation();
     if (shared) {
-      setCrossingSensitivityDeg(shared.crossingSensitivityDeg);
-      saveStoredSensitivity(shared.crossingSensitivityDeg);
+      const loc = { lat: shared.lat, lon: shared.lon };
+      setObserverState(loc);
+      saveStoredObserver(loc);
+      setMinElevationDeg(shared.minElevationDeg);
+      saveStoredMinElevation(shared.minElevationDeg);
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
@@ -101,8 +100,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [drawerOpen]);
 
-  // Only one of the main view or the drawer is reachable by keyboard/screen
-  // reader at a time, matching what's visible.
   useEffect(() => {
     if (mainRegionRef.current) mainRegionRef.current.inert = drawerOpen;
     if (drawerRef.current) drawerRef.current.inert = !drawerOpen;
@@ -115,21 +112,19 @@ export default function App() {
     else drawerToggleRef.current?.focus();
   }, [drawerOpen]);
 
-  // Ticks once a second so solar elevation, orbital phase, and the
-  // predicted-crossing countdown all keep advancing in real time even
-  // between ISS position polls — the terminator crossing is *computed*,
-  // not just reported by the feed.
+  // Ticks once a second so solar elevation, orbit progress, and countdowns
+  // all keep advancing smoothly between the ~5s ISS position polls.
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000);
     return () => clearInterval(id);
   }, []);
 
   const { position: livePosition } = useIssFeed();
-  const { count: crewFeedCount } = useCrewFeed();
+  const { count: crewFeedCount, people } = useCrewFeed();
 
   // world-atlas ships pre-built TopoJSON country polygons (ISC-licensed) —
-  // loaded once and point-in-polygon tested against on every position
-  // update, entirely offline, no reverse-geocoding API or key.
+  // loaded once and point-in-polygon tested on every position update,
+  // entirely offline, no reverse-geocoding API or key.
   const countries = useMemo<CountryFeature[]>(() => {
     try {
       const topology = worldCountries as unknown as Parameters<typeof feature>[0];
@@ -152,263 +147,227 @@ export default function App() {
     }
   }, []);
 
-  // Ground-track bookkeeping: derives speed/bearing from consecutive real
-  // fixes, grows the fading trail, and pings the "telemetry heartbeat"
-  // beacon exactly when a genuinely new sample (not a cached repeat)
-  // arrives. Simulate mode bypasses all of this — there's no real movement
-  // to measure.
+  // Ground-track bookkeeping: derives speed/bearing/orbital elements from
+  // consecutive real fixes, and grows the persisted "living cartography"
+  // trail — but only from genuinely new samples (not a cached poll repeat).
   useEffect(() => {
-    if (simulate || !livePosition) return;
+    if (!livePosition) return;
     const curr: TrackPoint = { lat: livePosition.lat, lon: livePosition.lon, timeMs: livePosition.timestampMs };
     const prev = prevPositionRef.current;
     if (prev && prev.timeMs === curr.timeMs) return;
 
     if (prev) {
-      setGroundSpeedKmh(computeGroundSpeedKmh(prev, curr));
-      setBearingDeg(computeBearingDeg(prev, curr));
+      const speed = computeGroundSpeedKmh(prev, curr);
+      const bearing = computeBearingDeg(prev, curr);
+      setGroundSpeedKmh(speed);
+      setBearingDeg(bearing);
+      if (bearing !== null) {
+        setOrbitalElements(deriveOrbitalElements(curr.lat, curr.lon, bearing, curr.timeMs));
+      }
     }
     prevPositionRef.current = curr;
-    setTrail((t) => pruneTrail([...t, curr], curr.timeMs, TRAIL_RETENTION_MS).slice(-MAX_TRAIL_POINTS));
-    if (startedRef.current) engineRef.current?.triggerBeacon();
-  }, [livePosition, simulate]);
+    setTrail((t) => {
+      const next = pruneTrail([...t, curr], curr.timeMs, TRAIL_RETENTION_MS);
+      saveTrail(next);
+      return next;
+    });
+  }, [livePosition]);
 
-  const effectivePosition = simulate
-    ? { lat: sim.lat, lon: sim.lon }
-    : livePosition
-      ? { lat: livePosition.lat, lon: livePosition.lon }
-      : null;
-
-  const effGroundSpeedKmh = simulate ? null : groundSpeedKmh;
-  const effBearingDeg = simulate ? null : bearingDeg;
-
-  const nextCrossing = useMemo(() => {
-    if (!effectivePosition || effBearingDeg == null || effGroundSpeedKmh == null) return null;
-    return predictNextCrossing(effectivePosition.lat, effectivePosition.lon, effBearingDeg, effGroundSpeedKmh, new Date());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectivePosition?.lat, effectivePosition?.lon, effBearingDeg, effGroundSpeedKmh]);
+  // The smoothly-propagated "where is it right now" position, used for
+  // display (map marker, dashboard readouts) — falls back to the last raw
+  // fix until enough samples exist to derive real orbital elements.
+  const displayPosition = useMemo(() => {
+    if (orbitalElements) return propagateSubSatellitePoint(orbitalElements, nowMs);
+    if (livePosition) return { lat: livePosition.lat, lon: livePosition.lon };
+    return null;
+  }, [orbitalElements, nowMs, livePosition]);
 
   const telemetry: OrbitalTelemetry = useMemo(() => {
     const crewCount = crewFeedCount ?? 0;
-    if (!effectivePosition) {
+    const phase = orbitalElements ? orbitalPhaseAt(orbitalElements, nowMs) : fallbackOrbitalPhase(nowMs);
+
+    if (!displayPosition) {
       return {
         altitudeKm: ISS_MEAN_ALTITUDE_KM,
         groundSpeedKmh: null,
         orbitalSpeedKmS: null,
         bearingDeg: null,
         elevationDeg: 0,
-        terminatorProximity: 0,
         isDaylight: true,
-        state: 'day',
         country: null,
         crewCount,
-        orbitalPhase: computeOrbitalPhase(nowMs),
-        nextCrossing: null,
+        orbitalPhase: phase,
       };
     }
 
-    const effectiveDate = simulate ? buildSimulatedDate(nowMs, sim.utcHour) : new Date(nowMs);
-    const elevation = solarElevationDeg(effectivePosition.lat, effectivePosition.lon, effectiveDate);
-    const daylight = computeIsDaylight(effectivePosition.lat, effectivePosition.lon, effectiveDate);
-    const proximity = computeTerminatorProximity(effectivePosition.lat, effectivePosition.lon, effectiveDate, crossingSensitivityDeg);
-    const country = findCountryAt(effectivePosition.lon, effectivePosition.lat, countries);
-    const orbitalSpeedKmS = effGroundSpeedKmh != null ? groundSpeedToOrbitalSpeedKmS(effGroundSpeedKmh, ISS_MEAN_ALTITUDE_KM) : null;
+    const date = new Date(nowMs);
+    const elevationDeg = solarElevationDeg(displayPosition.lat, displayPosition.lon, date);
+    const orbitalSpeedKmS = groundSpeedKmh != null ? groundSpeedToOrbitalSpeedKmS(groundSpeedKmh, ISS_MEAN_ALTITUDE_KM) : null;
 
     return {
       altitudeKm: ISS_MEAN_ALTITUDE_KM,
-      groundSpeedKmh: effGroundSpeedKmh,
+      groundSpeedKmh,
       orbitalSpeedKmS,
-      bearingDeg: effBearingDeg,
-      elevationDeg: elevation,
-      terminatorProximity: proximity,
-      isDaylight: daylight,
-      state: resolveSolarState(daylight, proximity),
-      country,
+      bearingDeg,
+      elevationDeg,
+      isDaylight: elevationDeg > 0,
+      country: findCountryAt(displayPosition.lon, displayPosition.lat, countries),
       crewCount,
-      orbitalPhase: computeOrbitalPhase(nowMs),
-      nextCrossing,
+      orbitalPhase: phase,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    effectivePosition?.lat, effectivePosition?.lon, simulate, sim.utcHour, nowMs,
-    crossingSensitivityDeg, countries, effGroundSpeedKmh, effBearingDeg, crewFeedCount, nextCrossing,
-  ]);
+  }, [displayPosition, orbitalElements, nowMs, countries, groundSpeedKmh, bearingDeg, crewFeedCount]);
 
-  const droneParams = useMemo(
-    () =>
-      mapTelemetryToParams({
-        isDaylight: telemetry.isDaylight,
-        terminatorProximity: telemetry.terminatorProximity,
-        crewCount: telemetry.crewCount,
-        groundSpeedKmh: telemetry.groundSpeedKmh,
-        overLand: telemetry.country !== null,
-        orbitalPhase: telemetry.orbitalPhase,
-      }),
-    [telemetry.isDaylight, telemetry.terminatorProximity, telemetry.crewCount, telemetry.groundSpeedKmh, telemetry.country, telemetry.orbitalPhase],
-  );
+  const solarState = resolveSolarState(telemetry.isDaylight, telemetry.elevationDeg);
+  const vignette = solarState === 'day' ? 0.15 : solarState === 'twilight' ? 0.35 : 0.55;
 
-  const getRecordingStream = useCallback(() => engineRef.current?.getRecordingStream() ?? null, []);
-  const recorder = useRecorder(getRecordingStream);
-
-  useEffect(() => {
-    engineRef.current?.updateDroneParams(droneParams);
-  }, [droneParams]);
-
-  // Fires the terminator-crossing swell the instant the continuously-ticking
-  // solar computation says isDaylight actually flipped — a predicted/computed
-  // event, not one detected only after the next network poll happens to land.
+  // Fires the instant the continuously-ticking solar computation says the
+  // ISS actually crossed the terminator — a detected, not merely reported, event.
   useEffect(() => {
     const prevDaylight = prevDaylightRef.current;
     prevDaylightRef.current = telemetry.isDaylight;
     if (prevDaylight === null || prevDaylight === telemetry.isDaylight) return;
     const direction: 'sunrise' | 'sunset' = telemetry.isDaylight ? 'sunrise' : 'sunset';
-    if (startedRef.current) engineRef.current?.triggerCrossing(mapCrossingToTriggerParams(direction));
+    if (direction === 'sunrise') setSunriseCount((n) => n + 1);
+    else setSunsetCount((n) => n + 1);
     setCrossingPulse({ key: Date.now(), direction });
   }, [telemetry.isDaylight]);
 
-  useEffect(() => {
-    engineRef.current?.setMasterVolume(volume);
-    saveStoredVolume(volume);
-  }, [volume]);
+  // Expensive multi-hour walks only re-run when the orbital elements
+  // themselves change (roughly once per ~5-8s poll); filtering the results
+  // down to "still upcoming" against the ticking clock is cheap.
+  const predictedCrossings = useMemo(
+    () => (orbitalElements ? predictTerminatorCrossings(orbitalElements, orbitalElements.epochMs, CROSSING_WINDOW_MS) : []),
+    [orbitalElements],
+  );
+  const upcomingCrossings = useMemo(() => predictedCrossings.filter((c) => c.atMs > nowMs), [predictedCrossings, nowMs]);
+
+  const predictedPasses = useMemo(
+    () =>
+      orbitalElements && observer
+        ? predictVisiblePasses(orbitalElements, observer.lat, observer.lon, ISS_MEAN_ALTITUDE_KM, orbitalElements.epochMs, PASS_WINDOW_MS, { minElevationDeg })
+        : [],
+    [orbitalElements, observer?.lat, observer?.lon, minElevationDeg],
+  );
+  const upcomingPasses = useMemo(() => predictedPasses.filter((p) => p.endMs > nowMs), [predictedPasses, nowMs]);
+
+  const predictedTrail = useMemo(() => {
+    if (!orbitalElements) return [];
+    const points = [];
+    for (let t = 0; t <= PREDICTED_TRAIL_HORIZON_MS; t += PREDICTED_TRAIL_STEP_MS) {
+      points.push(propagateSubSatellitePoint(orbitalElements, orbitalElements.epochMs + t));
+    }
+    return points;
+  }, [orbitalElements]);
 
   useEffect(() => {
-    listPresets().then(({ presets: loaded, source }) => {
-      setPresets(loaded);
-      setPresetsSource(source);
+    listLocations().then(({ locations: loaded, source }) => {
+      setLocations(loaded);
+      setLocationsSource(source);
     });
   }, []);
 
-  useEffect(
-    () => () => {
-      engineRef.current?.dispose();
-    },
-    [],
-  );
-
-  const handleStart = async () => {
-    const engine = engineRef.current;
-    if (!engine) return;
-    await engine.start();
-    engine.setMasterVolume(volume);
-    engine.updateDroneParams(droneParams);
-    Object.entries(mix).forEach(([layer, level]) => engine.setMixLevel(layer as MixLayer, level));
-    setStarted(true);
-    if (showOnboarding) dismissOnboarding();
+  const handleUseMyLocation = () => {
+    if (!('geolocation' in navigator)) {
+      setGeolocationStatus('unsupported');
+      return;
+    }
+    setGeolocationStatus('locating');
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const loc = { lat: pos.coords.latitude, lon: pos.coords.longitude };
+        setObserverState(loc);
+        saveStoredObserver(loc);
+        setGeolocationStatus('idle');
+      },
+      (err) => {
+        setGeolocationStatus(err.code === err.PERMISSION_DENIED ? 'denied' : 'error');
+      },
+      { timeout: 10_000, maximumAge: 60_000 },
+    );
   };
 
-  const handleStop = () => {
-    if (recorder.isRecording) recorder.stop();
-    engineRef.current?.stop();
-    setStarted(false);
+  const handleSetObserver = (loc: { lat: number; lon: number }) => {
+    setObserverState(loc);
+    saveStoredObserver(loc);
   };
 
-  const handleStartRef = useRef(handleStart);
-  const handleStopRef = useRef(handleStop);
-  handleStartRef.current = handleStart;
-  handleStopRef.current = handleStop;
-
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.code !== 'Space') return;
-      const tag = (e.target as HTMLElement | null)?.tagName.toLowerCase();
-      if (tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button') return;
-      e.preventDefault();
-      if (started) handleStopRef.current();
-      else handleStartRef.current();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [started]);
-
-  useMediaSession(
-    started,
-    {
-      title: `${telemetry.state.toUpperCase()} · Crew ${telemetry.crewCount} · ${telemetry.country ?? 'Open ocean'}`,
-      artist: 'Umbra',
-    },
-    handleStart,
-    handleStop,
-  );
-
-  const handleMixChange = (layer: MixLayer, level: number) => {
-    setMix((prev) => {
-      const next = { ...prev, [layer]: level };
-      saveStoredMix(next);
-      return next;
-    });
-    engineRef.current?.setMixLevel(layer, level);
+  const handleMinElevationChange = (v: number) => {
+    setMinElevationDeg(v);
+    saveStoredMinElevation(v);
   };
 
-  const handleSensitivityChange = (value: number) => {
-    setCrossingSensitivityDeg(value);
-    saveStoredSensitivity(value);
+  const handleSaveLocation = async () => {
+    const name = locationName.trim();
+    if (!name || !observer) return;
+    const { location, source } = await saveLocation(name, observer);
+    setLocations((prev) => [...prev.filter((l) => l.name !== name), location]);
+    setLocationsSource(source);
+    setLocationName('');
   };
 
-  const handleTriggerCrossing = (direction: 'sunrise' | 'sunset') => {
-    engineRef.current?.triggerCrossing(mapCrossingToTriggerParams(direction));
-    setCrossingPulse({ key: Date.now(), direction });
-  };
-
-  const handleTriggerBeacon = () => {
-    engineRef.current?.triggerBeacon();
-  };
-
-  const handleSavePreset = async () => {
-    const name = presetName.trim();
-    if (!name) return;
-    const config: EngineConfig = { crossingSensitivityDeg };
-    const { preset, source } = await savePreset(name, config);
-    setPresets((prev) => [...prev.filter((p) => p.name !== name), preset]);
-    setPresetsSource(source);
-    setPresetName('');
-  };
-
-  const handleLoadPreset = (name: string) => {
-    const preset = presets.find((p) => p.name === name);
-    if (preset) {
-      setCrossingSensitivityDeg(preset.params.crossingSensitivityDeg);
-      saveStoredSensitivity(preset.params.crossingSensitivityDeg);
+  const handleLoadLocation = (name: string) => {
+    const loc = locations.find((l) => l.name === name);
+    if (loc) {
+      setObserverState(loc.params);
+      saveStoredObserver(loc.params);
     }
   };
 
-  const handleDeletePreset = async (name: string) => {
-    const { source } = await deletePreset(name);
-    setPresets((prev) => prev.filter((p) => p.name !== name));
-    setPresetsSource(source);
+  const handleDeleteLocation = async (name: string) => {
+    const { source } = await deleteLocation(name);
+    setLocations((prev) => prev.filter((l) => l.name !== name));
+    setLocationsSource(source);
   };
 
   const handleCopyShareLink = async () => {
-    const ok = await copyToClipboard(buildShareUrl({ crossingSensitivityDeg }));
+    if (!observer) return;
+    const ok = await copyToClipboard(buildShareUrl({ lat: observer.lat, lon: observer.lon, minElevationDeg }));
     if (ok) {
       setLinkCopied(true);
       setTimeout(() => setLinkCopied(false), 2000);
     }
   };
 
+  const handleExportMap = async () => {
+    setExporting(true);
+    setExportError(null);
+    try {
+      await exportMapAsPng(svgRef.current, nightCanvasRef.current);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div className="app">
       <div ref={mainRegionRef}>
-        <MapScene position={effectivePosition} trail={simulate ? [] : trail} nowMs={nowMs} vignette={droneParams.vignette} crossingPulse={crossingPulse} />
+        <MapScene
+          position={displayPosition}
+          observedTrail={trail}
+          predictedTrail={predictedTrail}
+          observer={observer}
+          nowMs={nowMs}
+          vignette={vignette}
+          crossingPulse={crossingPulse}
+          svgRef={svgRef}
+          nightCanvasRef={nightCanvasRef}
+        />
 
         <div className="brand">Umbra</div>
 
         <main className="stage">
           <div className="tray-wrap">
             {showOnboarding && <OnboardingHint onDismiss={dismissOnboarding} />}
-            <NowPlayingTray
+            <StatusTray
               telemetry={telemetry}
-              analyser={engineRef.current.getAnalyser()}
-              started={started}
-              onStart={handleStart}
-              onStop={handleStop}
-              volume={volume}
-              onVolumeChange={setVolume}
-              isRecording={recorder.isRecording}
-              recordingUrl={recorder.recordingUrl}
-              recordingError={recorder.error}
-              onStartRecording={recorder.start}
-              onStopRecording={recorder.stop}
+              solarState={solarState}
               drawerOpen={drawerOpen}
               onToggleDrawer={() => setDrawerOpen((v) => !v)}
+              onExportMap={handleExportMap}
+              exporting={exporting}
+              exportError={exportError}
               drawerToggleRef={drawerToggleRef}
             />
           </div>
@@ -420,44 +379,44 @@ export default function App() {
       <aside ref={drawerRef} className={`drawer${drawerOpen ? ' drawer--open' : ''}`} aria-hidden={!drawerOpen}>
         <div className="drawer-inner">
           <div className="drawer-header">
-            <span>Telemetry</span>
+            <span>Mission Control</span>
             <button ref={drawerCloseRef} className="drawer-close" onClick={() => setDrawerOpen(false)}>
               ✕ Close
             </button>
           </div>
 
-          <ControlPanel
-            simulate={simulate}
-            onToggleSimulate={setSimulate}
-            sim={sim}
-            onSimChange={(patch) => setSim((prev) => ({ ...prev, ...patch }))}
-            onTriggerCrossing={handleTriggerCrossing}
-            onTriggerBeacon={handleTriggerBeacon}
-            crossingSensitivityDeg={crossingSensitivityDeg}
-            onSensitivityChange={handleSensitivityChange}
-            mix={mix}
-            onMixChange={handleMixChange}
-            presets={presets}
-            presetsSource={presetsSource}
-            presetName={presetName}
-            onPresetNameChange={setPresetName}
-            onSavePreset={handleSavePreset}
-            onLoadPreset={handleLoadPreset}
-            onDeletePreset={handleDeletePreset}
+          <MissionDashboard telemetry={telemetry} solarState={solarState} crew={people} sunriseCount={sunriseCount} sunsetCount={sunsetCount} />
+
+          <PassPredictor
+            observer={observer}
+            onSetObserver={handleSetObserver}
+            minElevationDeg={minElevationDeg}
+            onMinElevationChange={handleMinElevationChange}
+            passes={upcomingPasses}
+            crossings={upcomingCrossings}
+            telemetryReady={orbitalElements !== null}
+            nowMs={nowMs}
+            geolocationStatus={geolocationStatus}
+            onUseMyLocation={handleUseMyLocation}
+            locations={locations}
+            locationsSource={locationsSource}
+            locationName={locationName}
+            onLocationNameChange={setLocationName}
+            onSaveLocation={handleSaveLocation}
+            onLoadLocation={handleLoadLocation}
+            onDeleteLocation={handleDeleteLocation}
             onCopyShareLink={handleCopyShareLink}
             linkCopied={linkCopied}
           />
 
-          <StatusPanel telemetry={telemetry} params={droneParams} />
-
           <p className="drawer-footnote">
-            Synthesis engine built entirely from Tone.js oscillators, filters, and envelopes (no samples).
-            Position via Open Notify; altitude and orbital speed are derived from real orbital mechanics, not
-            reported by the feed — see the README.
+            Position via Open Notify; altitude, orbital speed, and every prediction are derived from real
+            orbital mechanics (Kepler's third law, a closed-form circular ground-track propagator) — see the
+            README.
           </p>
           <p className="drawer-footnote">
-            Every terminator crossing is predicted from real solar geometry and fires the instant it happens,
-            not on the next poll. One active drone layer per person currently in space.
+            Predictions assume a circular, non-precessing orbit at a fixed known inclination: accurate over
+            the windows shown here, but not a substitute for a real TLE-based ephemeris.
           </p>
         </div>
       </aside>

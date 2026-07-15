@@ -5,9 +5,8 @@ import {
   solarElevationDeg,
   isDaylight,
   terminatorProximity,
-  predictNextCrossing,
 } from './solarTerminator';
-import { destinationPoint, initialBearingDeg, normalizeDeg180, EARTH_RADIUS_KM } from './greatCircle';
+import { destinationPoint, normalizeDeg180, EARTH_RADIUS_KM } from './greatCircle';
 
 const QUARTER_CIRCUMFERENCE_KM = (Math.PI * EARTH_RADIUS_KM) / 2;
 
@@ -75,39 +74,5 @@ describe('terminatorProximity', () => {
         expect(p).toBeLessThanOrEqual(1);
       }
     }
-  });
-});
-
-describe('predictNextCrossing', () => {
-  it('predicts a sunset crossing at roughly the expected time for a point heading toward the terminator', () => {
-    const date = new Date('2026-09-10T06:00:00Z');
-    const sub = subsolarPoint(date);
-    const onTerminator = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM);
-    // 500km before the terminator, on the daylight side, heading straight at it.
-    const start = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM - 500);
-    expect(isDaylight(start.lat, start.lon, date)).toBe(true);
-
-    const bearing = initialBearingDeg(start.lat, start.lon, onTerminator.lat, onTerminator.lon);
-    const groundSpeedKmh = 27000; // ISS-order-of-magnitude ground speed
-    const expectedDeltaMs = (500 / groundSpeedKmh) * 3_600_000; // ~66.7s
-
-    const prediction = predictNextCrossing(start.lat, start.lon, bearing, groundSpeedKmh, date);
-    expect(prediction).not.toBeNull();
-    expect(prediction!.direction).toBe('sunset');
-    expect(Math.abs(prediction!.deltaMs - expectedDeltaMs)).toBeLessThan(20_000);
-  });
-
-  it('returns null when no crossing occurs within the lookahead window', () => {
-    const date = new Date('2026-09-10T06:00:00Z');
-    const sub = subsolarPoint(date);
-    // Standing still at the subsolar point never crosses anything.
-    const prediction = predictNextCrossing(sub.lat, sub.lon, 90, 100, date, 60_000);
-    expect(prediction).toBeNull();
-  });
-
-  it('returns null for zero or negative ground speed', () => {
-    const date = new Date('2026-09-10T06:00:00Z');
-    expect(predictNextCrossing(0, 0, 90, 0, date)).toBeNull();
-    expect(predictNextCrossing(0, 0, 90, -10, date)).toBeNull();
   });
 });

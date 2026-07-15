@@ -1,8 +1,6 @@
-import { destinationPoint, normalizeDeg180, toRadians } from './greatCircle';
+import { normalizeDeg180, toRadians } from './greatCircle';
 
 const DEFAULT_TERMINATOR_BAND_DEG = 8;
-const DEFAULT_STEP_MS = 15_000;
-const DEFAULT_MAX_LOOKAHEAD_MS = 20 * 60_000;
 
 export function dayOfYearUTC(date: Date): number {
   const start = Date.UTC(date.getUTCFullYear(), 0, 1);
@@ -46,10 +44,9 @@ export function subsolarPoint(date: Date): LatLon {
  * Solar elevation angle (deg) at any lat/lon at a given instant. Uses the
  * standard identity sin(elevation) = sin(lat)sin(decl) + cos(lat)cos(decl)cos(H),
  * where H is the hour angle (the point's longitude offset from the subsolar
- * meridian). Equivalently — and this is what predictNextCrossing leans on —
- * elevation = 90 deg minus the great-circle angular distance to the subsolar
- * point, since the subsolar point is by definition where the sun is
- * straight up.
+ * meridian). Equivalently, elevation = 90 deg minus the great-circle angular
+ * distance to the subsolar point, since the subsolar point is by definition
+ * where the sun is straight up — a handy identity for tests.
  */
 export function solarElevationDeg(lat: number, lon: number, date: Date): number {
   const sub = subsolarPoint(date);
@@ -67,71 +64,10 @@ export function isDaylight(lat: number, lon: number, date: Date): boolean {
 /**
  * A continuous 0..1 "how close to the terminator right now" value: 1 exactly
  * on the day/night line (elevation 0), fading to 0 once solar elevation is
- * at least `bandDeg` away from zero in either direction. This drives the
- * drone's day<->night crossfade smoothly instead of the audio snapping
- * abruptly the instant isDaylight flips.
+ * at least `bandDeg` away from zero in either direction. Used to shade the
+ * map's twilight band a little wider than a hard binary day/night line.
  */
 export function terminatorProximity(lat: number, lon: number, date: Date, bandDeg: number = DEFAULT_TERMINATOR_BAND_DEG): number {
   const elevation = Math.abs(solarElevationDeg(lat, lon, date));
   return Math.max(0, Math.min(1, 1 - elevation / bandDeg));
-}
-
-export interface CrossingPrediction {
-  /** Milliseconds from `fromDate` until the predicted crossing. */
-  deltaMs: number;
-  direction: 'sunrise' | 'sunset';
-}
-
-/**
- * Walks the ground track forward from (lat, lon) at a constant bearing and
- * ground speed, sampling solar elevation every `stepMs`, and returns the
- * (linearly-interpolated) time of the next day/night terminator crossing —
- * or null if none is found within `maxLookaheadMs`.
- *
- * This is a genuinely predictive feature (the crossing is computed from
- * solar geometry, not detected after the fact from a polled position), but
- * it assumes a LOCALLY LINEAR ground track: constant bearing and speed for
- * the whole lookahead window. The ISS's real ground track curves
- * continuously (orbital inclination + Earth's rotation), so this is a
- * short-horizon estimate, not a precise ephemeris — accurate close in,
- * fuzzier the further out the prediction reaches. See the README's Honest
- * Limitations section.
- */
-export function predictNextCrossing(
-  lat: number,
-  lon: number,
-  bearingDeg: number,
-  groundSpeedKmh: number,
-  fromDate: Date,
-  maxLookaheadMs: number = DEFAULT_MAX_LOOKAHEAD_MS,
-  stepMs: number = DEFAULT_STEP_MS,
-): CrossingPrediction | null {
-  if (groundSpeedKmh <= 0) return null;
-
-  const fromMs = fromDate.getTime();
-  const kmPerStep = groundSpeedKmh * (stepMs / 3_600_000);
-
-  let prevT = 0;
-  let prevPos: LatLon = { lat, lon };
-  let prevElevation = solarElevationDeg(lat, lon, fromDate);
-
-  for (let t = stepMs; t <= maxLookaheadMs; t += stepMs) {
-    const pos = destinationPoint(prevPos.lat, prevPos.lon, bearingDeg, kmPerStep);
-    const at = new Date(fromMs + t);
-    const elevation = solarElevationDeg(pos.lat, pos.lon, at);
-
-    if (Math.sign(elevation) !== Math.sign(prevElevation) && elevation !== prevElevation) {
-      // Linear interpolation between the two straddling samples for a
-      // sub-step-resolution crossing time.
-      const frac = prevElevation / (prevElevation - elevation);
-      const deltaMs = prevT + frac * (t - prevT);
-      return { deltaMs, direction: elevation > prevElevation ? 'sunrise' : 'sunset' };
-    }
-
-    prevT = t;
-    prevPos = pos;
-    prevElevation = elevation;
-  }
-
-  return null;
 }

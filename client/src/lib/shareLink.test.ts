@@ -3,7 +3,7 @@ import { encodeShareParams, decodeShareParams } from './shareLink';
 
 describe('encodeShareParams / decodeShareParams', () => {
   it('round-trips a valid config', () => {
-    const config = { crossingSensitivityDeg: 6 };
+    const config = { lat: 51.5074, lon: -0.1278, minElevationDeg: 15 };
     expect(decodeShareParams(encodeShareParams(config))).toEqual(config);
   });
 
@@ -15,7 +15,7 @@ describe('encodeShareParams / decodeShareParams', () => {
     expect(decodeShareParams(encodeURIComponent(btoa(JSON.stringify({ foo: 'bar' }))))).toBeNull();
   });
 
-  it('rejects an out-of-range value', () => {
-    expect(decodeShareParams(encodeURIComponent(btoa(JSON.stringify({ crossingSensitivityDeg: 999 }))))).toBeNull();
+  it('rejects an out-of-range latitude', () => {
+    expect(decodeShareParams(encodeURIComponent(btoa(JSON.stringify({ lat: 999, lon: 0, minElevationDeg: 10 }))))).toBeNull();
   });
 });

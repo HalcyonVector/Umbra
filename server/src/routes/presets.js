@@ -27,9 +27,9 @@ async function writePresets(presets) {
 
 const router = Router();
 
-// Presets store a *manual override* snapshot of the resolved engine params
-// (currently just the terminator-crossing sensitivity) so a user can recall
-// a setting they liked instead of always taking the default.
+// Presets store named observer locations ({ lat, lon }) for the visibility
+// predictor, so a user can recall "Home" or "Work" instead of re-entering
+// coordinates (or re-granting geolocation) every visit.
 router.get('/', async (_req, res) => {
   res.json(await readPresets());
 });

@@ -1,7 +1,7 @@
 {
   "name": "Umbra",
   "short_name": "Umbra",
-  "description": "A suspended generative soundscape synthesized live from the ISS's real orbit — position, derived altitude and velocity, and the day/night terminator.",
+  "description": "A living cartography of the ISS's real orbit and a genuine visibility predictor — see its growing ground-track weave and find out exactly when it'll be visible from where you are.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

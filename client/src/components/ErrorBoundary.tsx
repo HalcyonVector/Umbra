@@ -10,8 +10,8 @@ interface State {
 
 /**
  * A last-resort safety net. Something meant to be left running unattended
- * shouldn't white-screen silently if AudioEngine or a component throws;
- * this at least tells you it broke and offers a way back.
+ * shouldn't white-screen silently if a component throws; this at least
+ * tells you it broke and offers a way back.
  */
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false };
@@ -30,7 +30,7 @@ export class ErrorBoundary extends Component<Props, State> {
         <div className="error-fallback">
           <p className="error-fallback-title">Something went wrong.</p>
           <p className="error-fallback-body">
-            The engine hit an unexpected error. Refreshing usually fixes it.
+            Umbra hit an unexpected error. Refreshing usually fixes it.
           </p>
           <button onClick={() => window.location.reload()}>Refresh</button>
         </div>

@@ -7,11 +7,10 @@ export function OnboardingHint({ onDismiss }: OnboardingHintProps) {
   return (
     <div className="onboarding-hint" role="note">
       <p>
-        This is the ISS's real live position, from Open Notify. A background drone continuously reshapes itself
-        around altitude, orbital speed, who's currently aboard, and whether the station is in daylight or
-        darkness. Every real sunrise or sunset the crew sees — about 16 a day — triggers a slow audible swell{' '}
-        <em>exactly when it happens</em>, predicted from real solar geometry, not just reported by the feed.{' '}
-        <strong>⚙</strong> opens the Telemetry panel for more controls.
+        This map tracks the ISS's real live position from Open Notify. Its path persists across visits, slowly
+        drawing a real "ground track" weave as Earth rotates underneath each orbit. Set a location in{' '}
+        <strong>⚙ Mission Control</strong> to see exactly when the ISS will next be bright enough to spot
+        overhead from where you are — computed from real orbital mechanics and solar geometry, not a guess.
       </p>
       <button className="ghost" onClick={onDismiss}>
         Got it

@@ -26,50 +26,27 @@ export interface AstrosFeedResponse {
 
 export type SolarState = 'day' | 'night' | 'twilight';
 
-/** The continuous, fully-resolved drone/background synthesis parameters — the orbital analog of Fault-Line's SeismicParams. */
-export interface OrbitalParams {
-  droneDensity: number; // 0..1, overall thickness of the drone layer
-  layerCount: number; // 1..6, one active oscillator layer per crew member currently in space
-  brightness: number; // 0..1, 1 = full day, 0 = full night, continuous across the terminator band
-  filterCutoffHz: number;
-  filterResonance: number; // Q
-  driftRate: number; // Hz, slow LFO rate tied to ground-track speed
-  rootSemitone: number; // slow-breathing harmonic root offset, cycles once per real ISS orbit
-  warmth: number; // 0..1, grounded/over-land vs airy/over-ocean
-  vignette: number; // 0..1, visual darkening as night deepens — mirrors (1 - brightness)
-  state: SolarState;
-  orbitalPhase: number; // 0..1, passed through so AudioEngine can select the chord palette (see audio/orbitalTheory.ts)
-}
-
-/** Synthesis parameters for the discrete swell fired exactly at a predicted/detected terminator crossing. */
-export interface CrossingTriggerParams {
-  amplitude: number; // 0..1
-  direction: 'sunrise' | 'sunset';
-  toneHz: number; // sunrise reads brighter/higher, sunset lower/darker
-}
-
-/** Resolved orbital inputs for a given instant — what StatusPanel reads and what mapping/parameterMapping.ts consumes. */
+/** Resolved live orbital telemetry for the current instant — what the Mission Dashboard reads. */
 export interface OrbitalTelemetry {
   altitudeKm: number;
   groundSpeedKmh: number | null;
   orbitalSpeedKmS: number | null;
   bearingDeg: number | null;
-  elevationDeg: number;
-  terminatorProximity: number;
+  elevationDeg: number; // solar elevation at the ISS's sub-satellite point
   isDaylight: boolean;
-  state: SolarState;
   country: string | null;
   crewCount: number;
-  orbitalPhase: number; // 0..1
-  nextCrossing: { deltaMs: number; direction: 'sunrise' | 'sunset' } | null;
+  orbitalPhase: number; // 0..1 — progress through the current ~92.68-minute orbit
 }
 
-export interface EngineConfig {
-  crossingSensitivityDeg: number; // 2..15 — width of the solar-elevation band that counts as "crossing the terminator"
+/** A saved observer location for the visibility predictor. */
+export interface LocationParams {
+  lat: number;
+  lon: number;
 }
 
-export interface Preset {
+export interface LocationPreset {
   name: string;
-  params: EngineConfig;
+  params: LocationParams;
   savedAt: string;
 }
