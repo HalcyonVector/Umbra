@@ -141,13 +141,18 @@ export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunse
 
         <div className="rail-section-label">Crew aboard</div>
         <div className="crew-row">
-          <div className="crew-dots" title={crew.length > 0 ? crew.map((c) => `${c.name} (${c.craft})`).join(', ') : undefined}>
-            {Array.from({ length: Math.max(telemetry.crewCount, 0) }).map((_, i) => (
-              <span key={i}></span>
-            ))}
-            {telemetry.crewCount === 0 && <span className="crew-dots-empty">—</span>}
-          </div>
-          <span className="rail-value num" style={{ fontSize: '15px' }}>{telemetry.crewCount > 0 ? telemetry.crewCount : '—'}</span>
+          {telemetry.crewCount > 0 ? (
+            <>
+              <div className="crew-dots" title={crew.length > 0 ? crew.map((c) => `${c.name} (${c.craft})`).join(', ') : undefined}>
+                {Array.from({ length: telemetry.crewCount }).map((_, i) => (
+                  <span key={i}></span>
+                ))}
+              </div>
+              <span className="rail-value num" style={{ fontSize: '15px' }}>{telemetry.crewCount}</span>
+            </>
+          ) : (
+            <span className="rail-value num" style={{ fontSize: '15px' }}>—</span>
+          )}
         </div>
       </div>
 

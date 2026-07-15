@@ -38,18 +38,13 @@
   50% { opacity: 0.35; r: 6.5; }
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
-}
-
 @keyframes hint-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .map-iss-halo, .live-dot { animation: none !important; }
+  .map-iss-halo { animation: none !important; }
   .onboarding-banner { animation: none !important; }
 }
 
@@ -85,25 +80,6 @@
   color: var(--text-primary);
 }
 
-.live-status {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  color: var(--text-secondary);
-}
-
-.live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
-  box-shadow: 0 0 6px 1px var(--accent-glow);
-  animation: blink 2.4s ease-in-out infinite;
-}
-
 .topbar-clock {
   margin-left: auto;
   font-family: var(--font-mono);
@@ -115,34 +91,6 @@
 .topbar-clock b {
   color: var(--text-primary);
   font-weight: 500;
-}
-
-.topbar-export {
-  width: 30px;
-  height: 30px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--panel-raised);
-  border: 1px solid var(--line-strong);
-  color: var(--text-secondary);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.topbar-export:hover {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.topbar-export:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.topbar-error {
-  font-size: 11px;
-  color: var(--day);
 }
 
 /* ---------- Onboarding banner ---------- */
@@ -387,14 +335,36 @@ button.ghost:hover {
 
 /* ---------- Map center ---------- */
 
-.map-scene {
+.map-viewport {
   position: relative;
-  background: radial-gradient(120% 90% at 50% 8%, #0c1119, var(--ground) 68%);
   overflow: hidden;
+  cursor: grab;
+  touch-action: pan-y;
+  background: var(--ground);
+}
+
+.map-viewport--dragging {
+  cursor: grabbing;
+}
+
+.map-reel {
+  display: flex;
+  width: 300%;
+  height: 100%;
+  will-change: transform;
+}
+
+.map-layer {
+  position: relative;
+  flex: 0 0 33.3334%;
+  width: 33.3334%;
+  height: 100%;
+  background: radial-gradient(120% 90% at 50% 8%, #131a26, var(--ground) 68%);
 }
 
 .map-svg {
-  position: relative;
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -406,8 +376,7 @@ button.ghost:hover {
   width: 100%;
   height: 100%;
   pointer-events: none;
-  filter: blur(6px);
-  mix-blend-mode: multiply;
+  filter: blur(5px);
 }
 
 .map-iss-halo {

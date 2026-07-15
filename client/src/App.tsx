@@ -15,7 +15,6 @@ import { loadTrail, saveTrail } from './lib/trailStore';
 import { listLocations, saveLocation, deleteLocation, type LocationSource } from './lib/presetsStore';
 import { buildShareUrl, readShareParamsFromLocation } from './lib/shareLink';
 import { copyToClipboard } from './lib/clipboard';
-import { exportMapAsPng } from './lib/exportMap';
 import {
   hasSeenOnboarding, loadStoredMinElevation, loadStoredObserver, markOnboardingSeen,
   saveStoredMinElevation, saveStoredObserver,
@@ -41,8 +40,6 @@ function resolveSolarState(isDaylight: boolean, elevationDeg: number): SolarStat
 }
 
 export default function App() {
-  const svgRef = useRef<SVGSVGElement>(null);
-  const nightCanvasRef = useRef<HTMLCanvasElement>(null);
   const prevPositionRef = useRef<TrackPoint | null>(null);
   const prevDaylightRef = useRef<boolean | null>(null);
 
@@ -61,8 +58,6 @@ export default function App() {
   const [sunriseCount, setSunriseCount] = useState(0);
   const [sunsetCount, setSunsetCount] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const [exporting, setExporting] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
 
   const dismissOnboarding = () => {
     setShowOnboarding(false);
@@ -297,21 +292,9 @@ export default function App() {
     }
   };
 
-  const handleExportMap = async () => {
-    setExporting(true);
-    setExportError(null);
-    try {
-      await exportMapAsPng(svgRef.current, nightCanvasRef.current);
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Export failed.');
-    } finally {
-      setExporting(false);
-    }
-  };
-
   return (
     <div className="umbra-shell">
-      <TopBar nowMs={nowMs} onExportMap={handleExportMap} exporting={exporting} exportError={exportError} />
+      <TopBar nowMs={nowMs} />
 
       {showOnboarding && <OnboardingHint onDismiss={dismissOnboarding} />}
 
@@ -324,8 +307,6 @@ export default function App() {
           predictedTrail={predictedTrail}
           observer={observer}
           nowMs={nowMs}
-          svgRef={svgRef}
-          nightCanvasRef={nightCanvasRef}
         />
 
         <PredictorDock

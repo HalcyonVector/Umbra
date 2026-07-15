@@ -15,7 +15,7 @@ This project is for personal and educational use. It is **not a spaceflight-trac
 - The ISS's real ground track **persists in your browser across sessions** (`lib/trailStore.ts`) — the longer you've had Umbra open (or come back to it), the more of the real interlocking weave pattern the map draws, capped at 24 hours / 4,000 points so it can't grow unbounded.
 - A **live day/night shading raster**, independently sampled from solar-elevation geometry at every cell of a coarse lat/lon grid — not an approximated polygon, so it's correct straight through the poles and the antimeridian.
 - A **dashed preview of where the ISS is headed next** (the following 3 hours), traced by the same orbital propagator that powers the predictions — past and future, both real math, rendered distinctly.
-- **Export the current map as a PNG** at any time — a snapshot of your personal accumulated cartography, captured entirely client-side (nothing uploaded).
+- **Draggable** — click and drag left or right to look around the world; the map is three tiled copies panned with a wrapped pixel offset, so it scrolls seamlessly with no edge or seam.
 
 ### A Real Orbital Propagator, Derived From One Fix
 
@@ -44,7 +44,7 @@ Installable, hand-written `manifest.webmanifest` and `sw.js` (stale-while-revali
 
 ### UI/UX: "Instrument Console"
 
-Not a media-player skin: a permanent three-pane console — a left telemetry rail, the map filling the center, a right predictor dock — modeled on real satellite-tracking instrumentation rather than an app-store aesthetic. A top status bar frames the whole thing (live-feed indicator, UTC clock, export). Flat opaque panels, hairline borders, Archivo for display type and IBM Plex Mono for every number (tabular numerals throughout), one phosphor-teal accent reserved for the chrome itself — amber and indigo are semantic, used only for day/night state, never decoration. The dock's polar sky-plot is the centerpiece: the same rise/peak/set chart real satellite-tracking software uses, plotted from a real predicted pass's azimuth/elevation track, not an illustration.
+Not a media-player skin: a permanent three-pane console — a left telemetry rail, the draggable map filling the center, a right predictor dock — modeled on real satellite-tracking instrumentation rather than an app-store aesthetic. A top status bar frames the whole thing with the wordmark and a UTC clock. Flat opaque panels, hairline borders, Archivo for display type and IBM Plex Mono for every number (tabular numerals throughout), one phosphor-teal accent reserved for the chrome itself — amber and indigo are semantic, used only for day/night state, never decoration. The dock's polar sky-plot is the centerpiece: the same rise/peak/set chart real satellite-tracking software uses, plotted from a real predicted pass's azimuth/elevation track, not an illustration.
 
 ### Resilience & Accessibility
 
@@ -101,7 +101,7 @@ umbra/
 │       ├── orbital/          # pure orbital-mechanics/solar-geometry/propagator/visibility math + tests
 │       ├── map/               # equirectangular projection, trail paths, night-mask grid + tests
 │       ├── inputs/            # useIssFeed, useCrewFeed, useWakeLock
-│       ├── lib/                # clipboard, formatTime, localSettings, presetsStore, shareLink, trailStore, exportMap
+│       ├── lib/                # clipboard, formatTime, localSettings, presetsStore, shareLink, trailStore
 │       └── components/         # MapScene, TelemetryRail, PredictorDock, SkyPlot, TopBar, ...
 └── server/
     └── src/
@@ -168,7 +168,7 @@ Every pure function in `orbital/`, `map/`, and `lib/` has a matching Vitest suit
 - **"Everyone in space" isn't ISS-only.** `astros.json` includes any currently-occupied station (historically also Tiangong).
 - **No two orbital elements are ever cross-validated against each other** — each derivation trusts its most recent 2-fix pair; a single corrupted-but-plausible pair of Open Notify samples could seed a bad prediction for a few minutes until the next fix corrects it.
 - **The PWA icons aren't maskable-safe.** Tagged `purpose: "any"`, not `"maskable"`.
-- **The PNG export approximates the night mask's CSS blur/blend-mode** with a canvas filter rather than reproducing them exactly; the exported image is a close but not pixel-identical match to the live view.
+- **The draggable map's three tiled world copies each redraw their own night mask independently** — three times the (still trivial) fillRect work rather than one shared canvas, a simplicity-over-micro-optimization tradeoff.
 
 ## Suggested Future Features
 
