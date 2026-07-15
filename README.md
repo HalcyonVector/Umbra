@@ -28,7 +28,7 @@ Every prediction in the app — upcoming terminator crossings, upcoming visible 
 
 ### "Can I See It Tonight?"
 
-A real visibility calculation (`orbital/visibility.ts`), not a gimmick: the ISS is visible to the naked eye only when **it's high enough above your local horizon** (a spherical-Earth look-angle formula), **it's lit by the sun** (it has no lights of its own — this is why passes cluster around dawn/dusk, never local noon or local midnight), and **your own sky is dark enough** that a moving point of reflected sunlight would actually stand out. `orbital/eventPrediction.ts` walks the propagated ground track forward up to 24 hours, evaluates all three conditions at every step, and surfaces the next several passes with a start time, duration, and peak elevation.
+A real visibility calculation (`orbital/visibility.ts`), not a gimmick: the ISS is visible to the naked eye only when **it's high enough above your local horizon** (a spherical-Earth look-angle formula), **it's lit by the sun** (it has no lights of its own — this is why passes cluster around dawn/dusk, never local noon or local midnight), and **your own sky is dark enough** that a moving point of reflected sunlight would actually stand out. `orbital/eventPrediction.ts` walks the propagated ground track forward up to 24 hours, evaluates all three conditions at every step, and surfaces the next several passes with a start time, duration, and peak elevation — plus a full rise-to-set azimuth/elevation track, which the dock renders as a real polar sky-plot (`components/SkyPlot.tsx`): the same rise/peak/set chart amateur satellite trackers use to know which direction to physically point, not an illustration.
 
 ### Mission Dashboard
 
@@ -42,13 +42,13 @@ Named viewing locations (home, a family member's address, wherever) save to the 
 
 Installable, hand-written `manifest.webmanifest` and `sw.js` (stale-while-revalidate app shell; `/api/*` is explicitly never cached).
 
-### UI/UX: "Ground Track"
+### UI/UX: "Instrument Console"
 
-The background **is** the interface: every visual — land, night shading, the growing trail, the predicted-path preview, the observer marker — is computed directly from the real feed and real orbital mechanics, the same inputs the dashboard and predictor read, rendered instead of just logged.
+Not a media-player skin: a permanent three-pane console — a left telemetry rail, the map filling the center, a right predictor dock — modeled on real satellite-tracking instrumentation rather than an app-store aesthetic. A top status bar frames the whole thing (live-feed indicator, UTC clock, export). Flat opaque panels, hairline borders, Archivo for display type and IBM Plex Mono for every number (tabular numerals throughout), one phosphor-teal accent reserved for the chrome itself — amber and indigo are semantic, used only for day/night state, never decoration. The dock's polar sky-plot is the centerpiece: the same rise/peak/set chart real satellite-tracking software uses, plotted from a real predicted pass's azimuth/elevation track, not an illustration.
 
 ### Resilience & Accessibility
 
-Top-level `ErrorBoundary`, a real `inert`-based focus trap for the Mission Control drawer, disambiguated `aria-label`s, and `prefers-reduced-motion` respected for every animated element.
+Top-level `ErrorBoundary`, disambiguated `aria-label`s throughout, a responsive single-column fallback below 860px, and `prefers-reduced-motion` respected for every animated element.
 
 ## Data Source
 
@@ -60,6 +60,7 @@ Top-level `ErrorBoundary`, a real `inert`-based focus trap for the Mission Contr
 | --- | --- |
 | Frontend | React 18, TypeScript, Vite |
 | Cartography | `world-atlas` (bundled TopoJSON land + country borders) + `topojson-client` |
+| Type | Archivo (display), IBM Plex Sans (UI), IBM Plex Mono (all telemetry, tabular numerals) |
 | Backend | Node.js, Express |
 | Testing | Vitest (+ Supertest for the API) |
 | Orchestration | `concurrently` + `cross-env` for the dev workflow |
@@ -101,7 +102,7 @@ umbra/
 │       ├── map/               # equirectangular projection, trail paths, night-mask grid + tests
 │       ├── inputs/            # useIssFeed, useCrewFeed, useWakeLock
 │       ├── lib/                # clipboard, formatTime, localSettings, presetsStore, shareLink, trailStore, exportMap
-│       └── components/         # MapScene, MissionDashboard, PassPredictor, StatusTray, ...
+│       └── components/         # MapScene, TelemetryRail, PredictorDock, SkyPlot, TopBar, ...
 └── server/
     └── src/
         ├── routes/            # iss.js, astros.js, presets.js
@@ -147,7 +148,7 @@ Open Notify (iss-now.json, astros.json)
               orbital/visibility.ts (look-angle, sunlit, darkness)          land + night mask + trail + marker
                               │
                               ▼
-                 components/MissionDashboard.tsx, PassPredictor.tsx
+                 components/TelemetryRail.tsx, PredictorDock.tsx (+ SkyPlot.tsx)
 ```
 
 ## Testing

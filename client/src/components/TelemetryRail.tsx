@@ -1,0 +1,157 @@
+import type { CrewMember, OrbitalTelemetry, SolarState } from '../types';
+import { ISS_MEAN_PERIOD_MIN } from '../orbital/orbitalMechanics';
+
+interface TelemetryRailProps {
+  telemetry: OrbitalTelemetry;
+  solarState: SolarState;
+  crew: CrewMember[];
+  sunriseCount: number;
+  sunsetCount: number;
+}
+
+const RING_RADIUS = 46;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+const STATE_LABEL: Record<SolarState, string> = { day: 'Daylight', night: 'Night', twilight: 'Twilight' };
+
+function StateIcon({ state }: { state: SolarState }) {
+  if (state === 'day') {
+    return (
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+        <circle cx="8" cy="8" r="3.4" />
+        <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.5 3.5l1.4 1.4M11.1 11.1l1.4 1.4M12.5 3.5l-1.4 1.4M4.9 11.1l-1.4 1.4" />
+      </svg>
+    );
+  }
+  if (state === 'night') {
+    return (
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M13 9.4A5.6 5.6 0 1 1 6.6 3a4.5 4.5 0 0 0 6.4 6.4Z" />
+      </svg>
+    );
+  }
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="5.5" />
+      <path d="M8 2.5v11" />
+    </svg>
+  );
+}
+
+function AltitudeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 13 L6.5 5 L9.5 9.5 L14 2.5" />
+      <path d="M14 6.5V2.5H10" />
+    </svg>
+  );
+}
+
+function SpeedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+      <path d="M3 11.5A5.5 5.2 0 0 1 13 11.5" />
+      <path d="M8 11.5 L10.6 7.2" />
+      <circle cx="8" cy="11.5" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function OrbitalSpeedIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" aria-hidden="true">
+      <ellipse cx="8" cy="8" rx="6.2" ry="3.1" transform="rotate(-14 8 8)" />
+      <circle cx="13" cy="6.3" r="1" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function fmt(n: number, digits = 1) {
+  return n.toFixed(digits);
+}
+
+/**
+ * The permanent left instrument cluster — always visible, no toggle. An
+ * orbit-progress dial anchors it, telemetry rows carry the live-derived
+ * numbers, and crew is encoded as both a count and a row of dots — a
+ * literal visual census, one mark per person currently in space.
+ */
+export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunsetCount }: TelemetryRailProps) {
+  const phase = Math.max(0, Math.min(1, telemetry.orbitalPhase));
+  const dashOffset = RING_CIRCUMFERENCE * (1 - phase);
+  const remainingMin = Math.max(0, Math.round((1 - phase) * ISS_MEAN_PERIOD_MIN));
+
+  return (
+    <aside className="rail">
+      <div>
+        <div className="orbit-dial">
+          <svg viewBox="0 0 108 108" width="108" height="108">
+            <circle className="orbit-dial-track" cx="54" cy="54" r={RING_RADIUS} fill="none" strokeWidth="2.5" />
+            <circle
+              className="orbit-dial-progress"
+              cx="54" cy="54" r={RING_RADIUS} fill="none" strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeDasharray={RING_CIRCUMFERENCE}
+              strokeDashoffset={dashOffset}
+              transform="rotate(-90 54 54)"
+            />
+          </svg>
+          <div className="orbit-dial-center">
+            <span className="orbit-dial-pct num">{Math.round(phase * 100)}%</span>
+            <span className="orbit-dial-rem">{remainingMin}M LEFT</span>
+          </div>
+        </div>
+        <div className="state-pill">
+          <StateIcon state={solarState} />
+          {STATE_LABEL[solarState]}
+        </div>
+        <div className="crossing-tally">
+          <span>{sunriseCount} sunrises</span>
+          <span>{sunsetCount} sunsets</span>
+          <span className="crossing-tally-note">this session</span>
+        </div>
+      </div>
+
+      <div>
+        <div className="rail-section-label">Telemetry</div>
+        <div className="telemetry-row">
+          <span className="telemetry-icon"><AltitudeIcon /></span>
+          <span>
+            <span className="rail-label">Altitude</span>
+            <span className="rail-value">{telemetry.altitudeKm.toFixed(0)}<small>km est.</small></span>
+          </span>
+        </div>
+        <div className="telemetry-row">
+          <span className="telemetry-icon"><SpeedIcon /></span>
+          <span>
+            <span className="rail-label">Ground speed</span>
+            <span className="rail-value">
+              {telemetry.groundSpeedKmh != null ? Math.round(telemetry.groundSpeedKmh).toLocaleString() : '—'}
+              <small>km/h</small>
+            </span>
+          </span>
+        </div>
+        <div className="telemetry-row">
+          <span className="telemetry-icon"><OrbitalSpeedIcon /></span>
+          <span>
+            <span className="rail-label">Orbital speed</span>
+            <span className="rail-value">{telemetry.orbitalSpeedKmS != null ? fmt(telemetry.orbitalSpeedKmS, 2) : '—'}<small>km/s</small></span>
+          </span>
+        </div>
+
+        <div className="rail-section-label">Crew aboard</div>
+        <div className="crew-row">
+          <div className="crew-dots" title={crew.length > 0 ? crew.map((c) => `${c.name} (${c.craft})`).join(', ') : undefined}>
+            {Array.from({ length: Math.max(telemetry.crewCount, 0) }).map((_, i) => (
+              <span key={i}></span>
+            ))}
+            {telemetry.crewCount === 0 && <span className="crew-dots-empty">—</span>}
+          </div>
+          <span className="rail-value num" style={{ fontSize: '15px' }}>{telemetry.crewCount > 0 ? telemetry.crewCount : '—'}</span>
+        </div>
+      </div>
+
+      <div className="rail-foot">Position via Open Notify. Altitude, speed, and orbit shape are derived, not reported.</div>
+    </aside>
+  );
+}

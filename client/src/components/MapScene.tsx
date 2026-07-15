@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { feature } from 'topojson-client';
 // world-atlas ships pre-built TopoJSON land data (ISC-licensed) so the map
 // is real cartography with no external map-tile API or key.
@@ -10,21 +10,21 @@ const VIEW_WIDTH = 1000;
 const VIEW_HEIGHT = 500;
 const NIGHT_GRID_COLS = 120;
 const NIGHT_GRID_ROWS = 60;
-const CROSSING_PULSE_MS = 3200;
 
 // Colors are inlined as literal values (not CSS custom properties or
 // classNames) deliberately: the "export as PNG" feature serializes this
 // SVG standalone, outside the page's stylesheet context, so anything
 // styled only via App.css would render unstyled in the exported image.
-const OCEAN_FILL = '#090b18';
-const LAND_FILL = '#171b30';
-const LAND_STROKE = 'rgba(205, 214, 244, 0.14)';
-const OBSERVED_TRAIL_STROKE = '#cdd6f4';
-const PREDICTED_TRAIL_STROKE = 'rgba(205, 214, 244, 0.5)';
-const ISS_HALO_STROKE = '#eef2ff';
-const ISS_DOT_FILL = '#eef2ff';
-const OBSERVER_FILL = '#f2c14e';
-const OBSERVER_STROKE = '#0a0e1c';
+const OCEAN_FILL = '#0b0d12';
+const LAND_FILL = '#141821';
+const LAND_STROKE = 'rgba(238, 241, 244, 0.08)';
+const EQUATOR_STROKE = '#161b23';
+const OBSERVED_TRAIL_STROKE = '#3a4150';
+const PREDICTED_TRAIL_STROKE = '#6fe0c9';
+const ISS_HALO_STROKE = '#eef1f4';
+const ISS_DOT_FILL = '#eef1f4';
+const OBSERVER_FILL = '#f2b155';
+const OBSERVER_STROKE = '#060709';
 
 interface MapSceneProps {
   position: LatLonLike | null;
@@ -32,27 +32,24 @@ interface MapSceneProps {
   predictedTrail: LatLonLike[];
   observer: LatLonLike | null;
   nowMs: number;
-  vignette: number; // 0..1 — deepens toward night
-  crossingPulse: { key: number; direction: 'sunrise' | 'sunset' } | null;
   svgRef?: RefObject<SVGSVGElement>;
   nightCanvasRef?: RefObject<HTMLCanvasElement>;
 }
 
 /**
- * Full-viewport world map: real land silhouettes, a live day/night shading
- * raster sampled directly from solar geometry, a growing "living
+ * The map is the whole picture: real land silhouettes, a live day/night
+ * shading raster sampled directly from solar geometry, a growing "living
  * cartography" trail of everywhere the ISS has actually been (persisted
- * across sessions — see lib/trailStore.ts), a dashed preview of where it's
- * headed next (from the orbital propagator), and — once a viewing location
- * is set — a marker for the observer themselves.
+ * across sessions — see lib/trailStore.ts) shown dim, a bright preview of
+ * where it's headed next (from the orbital propagator), and — once a
+ * viewing location is set — a marker for the observer. No grid, no
+ * decorative overlays competing with the data.
  */
-export function MapScene({ position, observedTrail, predictedTrail, observer, nowMs, vignette, crossingPulse, svgRef, nightCanvasRef }: MapSceneProps) {
+export function MapScene({ position, observedTrail, predictedTrail, observer, nowMs, svgRef, nightCanvasRef }: MapSceneProps) {
   const internalSvgRef = useRef<SVGSVGElement>(null);
   const internalNightCanvasRef = useRef<HTMLCanvasElement>(null);
   const resolvedSvgRef = svgRef ?? internalSvgRef;
   const resolvedNightCanvasRef = nightCanvasRef ?? internalNightCanvasRef;
-
-  const [pulseActive, setPulseActive] = useState(false);
 
   const landPaths = useMemo(() => {
     const project = (lon: number, lat: number) => projectEquirectangular(lon, lat, VIEW_WIDTH, VIEW_HEIGHT);
@@ -97,34 +94,27 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minuteKey]);
 
-  useEffect(() => {
-    if (!crossingPulse) return;
-    setPulseActive(true);
-    const id = setTimeout(() => setPulseActive(false), CROSSING_PULSE_MS);
-    return () => clearTimeout(id);
-  }, [crossingPulse]);
-
   const project = (lon: number, lat: number) => projectEquirectangular(lon, lat, VIEW_WIDTH, VIEW_HEIGHT);
   const projected = position ? project(position.lon, position.lat) : null;
   const projectedObserver = observer ? project(observer.lon, observer.lat) : null;
+  const equatorY = project(0, 0).y;
 
   const observedTrailPath = useMemo(() => pathFromTrail(observedTrail, project, VIEW_WIDTH), [observedTrail]);
   const predictedTrailPath = useMemo(() => pathFromTrail(predictedTrail, project, VIEW_WIDTH), [predictedTrail]);
-
-  const vignetteOpacity = 0.1 + Math.max(0, Math.min(1, vignette)) * 0.5;
 
   return (
     <div className="map-scene" aria-hidden="true">
       <svg ref={resolvedSvgRef} className="map-svg" viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`} preserveAspectRatio="xMidYMid slice">
         <rect x={0} y={0} width={VIEW_WIDTH} height={VIEW_HEIGHT} fill={OCEAN_FILL} />
+        <line x1={0} y1={equatorY} x2={VIEW_WIDTH} y2={equatorY} stroke={EQUATOR_STROKE} strokeWidth={1} strokeDasharray="2 8" />
         {landPaths.map((d, i) => (
           <path key={i} d={d} fill={LAND_FILL} stroke={LAND_STROKE} strokeWidth={0.6} />
         ))}
-        {predictedTrailPath && (
-          <path d={predictedTrailPath} fill="none" stroke={PREDICTED_TRAIL_STROKE} strokeWidth={1.2} strokeDasharray="4 4" strokeLinecap="round" />
-        )}
         {observedTrailPath && (
-          <path d={observedTrailPath} fill="none" stroke={OBSERVED_TRAIL_STROKE} strokeWidth={1.4} strokeOpacity={0.55} strokeLinecap="round" strokeLinejoin="round" />
+          <path d={observedTrailPath} fill="none" stroke={OBSERVED_TRAIL_STROKE} strokeWidth={1.2} strokeDasharray="1 5" strokeLinecap="round" />
+        )}
+        {predictedTrailPath && (
+          <path d={predictedTrailPath} fill="none" stroke={PREDICTED_TRAIL_STROKE} strokeWidth={1.3} strokeDasharray="3 5" strokeOpacity={0.75} strokeLinecap="round" />
         )}
         {projectedObserver && (
           <g>
@@ -134,22 +124,16 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
         )}
         {projected && (
           <g className="map-iss">
-            <circle cx={projected.x} cy={projected.y} r={10} className="map-iss-halo" fill="none" stroke={ISS_HALO_STROKE} strokeWidth={1.5} />
-            <circle cx={projected.x} cy={projected.y} r={3.2} fill={ISS_DOT_FILL} />
+            <circle cx={projected.x} cy={projected.y} r={3.4} className="map-iss-halo" fill="none" stroke={ISS_HALO_STROKE} strokeWidth={1.1} strokeOpacity={0.9} />
+            <circle cx={projected.x} cy={projected.y} r={2.6} fill={ISS_DOT_FILL} />
           </g>
         )}
       </svg>
 
       <canvas ref={resolvedNightCanvasRef} width={NIGHT_GRID_COLS * 2} height={NIGHT_GRID_ROWS * 2} className="map-night-canvas" />
 
-      <div className="map-vignette" style={{ opacity: vignetteOpacity }} />
-
-      {crossingPulse && (
-        <div
-          key={crossingPulse.key}
-          className={`map-crossing-pulse map-crossing-pulse--${crossingPulse.direction}${pulseActive ? ' map-crossing-pulse--active' : ''}`}
-        />
-      )}
+      <span className="corner tl"></span>
+      <span className="corner br"></span>
     </div>
   );
 }

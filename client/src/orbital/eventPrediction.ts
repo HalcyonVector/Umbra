@@ -1,6 +1,6 @@
 import { propagateSubSatellitePoint, type OrbitalElements } from './groundTrackPropagator';
 import { isDaylight } from './solarTerminator';
-import { evaluateVisibility, type VisibilityOptions } from './visibility';
+import { evaluateVisibility, satelliteAzimuthDeg, type VisibilityOptions } from './visibility';
 
 export interface CrossingPrediction {
   atMs: number;
@@ -59,20 +59,52 @@ export function predictTerminatorCrossings(
   return crossings;
 }
 
+/** One sampled point along a pass's rise-to-set arc, in look-angle (azimuth/elevation) terms — what the sky-plot renders. */
+export interface PassTrackPoint {
+  atMs: number;
+  azimuthDeg: number;
+  elevationDeg: number;
+}
+
 export interface PassPrediction {
   startMs: number;
   peakMs: number;
   endMs: number;
   peakElevationDeg: number;
+  startAzimuthDeg: number;
+  endAzimuthDeg: number;
+  track: PassTrackPoint[];
 }
 
 const DEFAULT_PASS_STEP_MS = 15_000;
 const DEFAULT_PASS_WINDOW_MS = 24 * 60 * 60_000;
 
+interface OpenPass {
+  startMs: number;
+  peakMs: number;
+  peakElevationDeg: number;
+  track: PassTrackPoint[];
+}
+
+function finalizePass(open: OpenPass, endMs: number): PassPrediction {
+  const track = open.track;
+  return {
+    startMs: open.startMs,
+    peakMs: open.peakMs,
+    endMs,
+    peakElevationDeg: open.peakElevationDeg,
+    startAzimuthDeg: track[0]?.azimuthDeg ?? 0,
+    endAzimuthDeg: track[track.length - 1]?.azimuthDeg ?? 0,
+    track,
+  };
+}
+
 /**
  * Walks the propagated ground track forward, evaluating visibility from
  * (observerLat, observerLon) at every step, and groups contiguous visible
- * stretches into discrete pass windows with a peak elevation and time.
+ * stretches into discrete pass windows — each carrying the full rise-to-set
+ * azimuth/elevation track a sky-plot needs to actually show which direction
+ * to look, not just how long until it's worth going outside.
  */
 export function predictVisiblePasses(
   elements: OrbitalElements,
@@ -85,7 +117,7 @@ export function predictVisiblePasses(
   stepMs: number = DEFAULT_PASS_STEP_MS,
 ): PassPrediction[] {
   const passes: PassPrediction[] = [];
-  let current: { startMs: number; peakMs: number; peakElevationDeg: number } | null = null;
+  let current: OpenPass | null = null;
 
   for (let t = 0; t <= windowMs; t += stepMs) {
     const atMs = fromMs + t;
@@ -93,20 +125,22 @@ export function predictVisiblePasses(
     const result = evaluateVisibility(observerLat, observerLon, pos.lat, pos.lon, altitudeKm, new Date(atMs), options);
 
     if (result.visible) {
+      const azimuthDeg = satelliteAzimuthDeg(observerLat, observerLon, pos.lat, pos.lon);
       if (!current) {
-        current = { startMs: atMs, peakMs: atMs, peakElevationDeg: result.elevationDeg };
+        current = { startMs: atMs, peakMs: atMs, peakElevationDeg: result.elevationDeg, track: [] };
       } else if (result.elevationDeg > current.peakElevationDeg) {
         current.peakMs = atMs;
         current.peakElevationDeg = result.elevationDeg;
       }
+      current.track.push({ atMs, azimuthDeg, elevationDeg: result.elevationDeg });
     } else if (current) {
-      passes.push({ ...current, endMs: atMs });
+      passes.push(finalizePass(current, atMs));
       current = null;
     }
   }
 
   if (current) {
-    passes.push({ ...current, endMs: fromMs + windowMs });
+    passes.push(finalizePass(current, fromMs + windowMs));
   }
 
   return passes;

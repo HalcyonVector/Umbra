@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { satelliteElevationDeg, evaluateVisibility } from './visibility';
+import { satelliteElevationDeg, satelliteAzimuthDeg, evaluateVisibility } from './visibility';
 import { subsolarPoint, isDaylight, solarElevationDeg } from './solarTerminator';
 import { destinationPoint, EARTH_RADIUS_KM, toDegrees } from './greatCircle';
 import { ISS_MEAN_ALTITUDE_KM } from './orbitalMechanics';
@@ -29,6 +29,30 @@ describe('satelliteElevationDeg', () => {
   it('the horizon distance is in the real ballpark for the ISS (roughly 2000-2400km)', () => {
     expect(ISS_HORIZON_DISTANCE_KM).toBeGreaterThan(2000);
     expect(ISS_HORIZON_DISTANCE_KM).toBeLessThan(2400);
+  });
+});
+
+describe('satelliteAzimuthDeg', () => {
+  it('reads 90 (east) for a satellite due east of the observer', () => {
+    expect(satelliteAzimuthDeg(0, 0, 0, 10)).toBeCloseTo(90, 6);
+  });
+
+  it('reads 0 (north) for a satellite due north of the observer', () => {
+    expect(satelliteAzimuthDeg(0, 0, 10, 0)).toBeCloseTo(0, 6);
+  });
+
+  it('reads 180 (south) for a satellite due south of the observer', () => {
+    expect(satelliteAzimuthDeg(10, 0, 0, 0)).toBeCloseTo(180, 6);
+  });
+
+  it('stays within [0, 360)', () => {
+    for (let lat = -60; lat <= 60; lat += 30) {
+      for (let lon = -150; lon <= 150; lon += 30) {
+        const az = satelliteAzimuthDeg(0, 0, lat, lon);
+        expect(az).toBeGreaterThanOrEqual(0);
+        expect(az).toBeLessThan(360);
+      }
+    }
   });
 });
 

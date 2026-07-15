@@ -21,10 +21,10 @@ import {
   saveStoredMinElevation, saveStoredObserver,
 } from './lib/localSettings';
 import { MapScene } from './components/MapScene';
-import { StatusTray } from './components/StatusTray';
+import { TopBar } from './components/TopBar';
 import { OnboardingHint } from './components/OnboardingHint';
-import { MissionDashboard } from './components/MissionDashboard';
-import { PassPredictor, type GeolocationStatus } from './components/PassPredictor';
+import { TelemetryRail } from './components/TelemetryRail';
+import { PredictorDock, type GeolocationStatus } from './components/PredictorDock';
 import type { LocationPreset, OrbitalTelemetry, SolarState } from './types';
 import './App.css';
 
@@ -41,11 +41,6 @@ function resolveSolarState(isDaylight: boolean, elevationDeg: number): SolarStat
 }
 
 export default function App() {
-  const mainRegionRef = useRef<HTMLDivElement>(null);
-  const drawerRef = useRef<HTMLElement>(null);
-  const drawerCloseRef = useRef<HTMLButtonElement>(null);
-  const drawerToggleRef = useRef<HTMLButtonElement>(null);
-  const drawerHasMounted = useRef(false);
   const svgRef = useRef<SVGSVGElement>(null);
   const nightCanvasRef = useRef<HTMLCanvasElement>(null);
   const prevPositionRef = useRef<TrackPoint | null>(null);
@@ -57,14 +52,12 @@ export default function App() {
   const [locations, setLocations] = useState<LocationPreset[]>([]);
   const [locationsSource, setLocationsSource] = useState<LocationSource>('server');
   const [locationName, setLocationName] = useState('');
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
   const [trail, setTrail] = useState<TrackPoint[]>(() => loadTrail());
   const [groundSpeedKmh, setGroundSpeedKmh] = useState<number | null>(null);
   const [bearingDeg, setBearingDeg] = useState<number | null>(null);
   const [orbitalElements, setOrbitalElements] = useState<OrbitalElements | null>(null);
-  const [crossingPulse, setCrossingPulse] = useState<{ key: number; direction: 'sunrise' | 'sunset' } | null>(null);
   const [sunriseCount, setSunriseCount] = useState(0);
   const [sunsetCount, setSunsetCount] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -90,27 +83,6 @@ export default function App() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
-
-  useEffect(() => {
-    if (!drawerOpen) return undefined;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setDrawerOpen(false);
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [drawerOpen]);
-
-  useEffect(() => {
-    if (mainRegionRef.current) mainRegionRef.current.inert = drawerOpen;
-    if (drawerRef.current) drawerRef.current.inert = !drawerOpen;
-
-    if (!drawerHasMounted.current) {
-      drawerHasMounted.current = true;
-      return;
-    }
-    if (drawerOpen) drawerCloseRef.current?.focus();
-    else drawerToggleRef.current?.focus();
-  }, [drawerOpen]);
 
   // Ticks once a second so solar elevation, orbit progress, and countdowns
   // all keep advancing smoothly between the ~5s ISS position polls.
@@ -218,18 +190,15 @@ export default function App() {
   }, [displayPosition, orbitalElements, nowMs, countries, groundSpeedKmh, bearingDeg, crewFeedCount]);
 
   const solarState = resolveSolarState(telemetry.isDaylight, telemetry.elevationDeg);
-  const vignette = solarState === 'day' ? 0.15 : solarState === 'twilight' ? 0.35 : 0.55;
 
-  // Fires the instant the continuously-ticking solar computation says the
+  // Counts the instant the continuously-ticking solar computation says the
   // ISS actually crossed the terminator — a detected, not merely reported, event.
   useEffect(() => {
     const prevDaylight = prevDaylightRef.current;
     prevDaylightRef.current = telemetry.isDaylight;
     if (prevDaylight === null || prevDaylight === telemetry.isDaylight) return;
-    const direction: 'sunrise' | 'sunset' = telemetry.isDaylight ? 'sunrise' : 'sunset';
-    if (direction === 'sunrise') setSunriseCount((n) => n + 1);
+    if (telemetry.isDaylight) setSunriseCount((n) => n + 1);
     else setSunsetCount((n) => n + 1);
-    setCrossingPulse({ key: Date.now(), direction });
   }, [telemetry.isDaylight]);
 
   // Expensive multi-hour walks only re-run when the orbital elements
@@ -341,85 +310,46 @@ export default function App() {
   };
 
   return (
-    <div className="app">
-      <div ref={mainRegionRef}>
+    <div className="umbra-shell">
+      <TopBar nowMs={nowMs} onExportMap={handleExportMap} exporting={exporting} exportError={exportError} />
+
+      {showOnboarding && <OnboardingHint onDismiss={dismissOnboarding} />}
+
+      <div className="body-grid">
+        <TelemetryRail telemetry={telemetry} solarState={solarState} crew={people} sunriseCount={sunriseCount} sunsetCount={sunsetCount} />
+
         <MapScene
           position={displayPosition}
           observedTrail={trail}
           predictedTrail={predictedTrail}
           observer={observer}
           nowMs={nowMs}
-          vignette={vignette}
-          crossingPulse={crossingPulse}
           svgRef={svgRef}
           nightCanvasRef={nightCanvasRef}
         />
 
-        <div className="brand">Umbra</div>
-
-        <main className="stage">
-          <div className="tray-wrap">
-            {showOnboarding && <OnboardingHint onDismiss={dismissOnboarding} />}
-            <StatusTray
-              telemetry={telemetry}
-              solarState={solarState}
-              drawerOpen={drawerOpen}
-              onToggleDrawer={() => setDrawerOpen((v) => !v)}
-              onExportMap={handleExportMap}
-              exporting={exporting}
-              exportError={exportError}
-              drawerToggleRef={drawerToggleRef}
-            />
-          </div>
-        </main>
+        <PredictorDock
+          observer={observer}
+          onSetObserver={handleSetObserver}
+          minElevationDeg={minElevationDeg}
+          onMinElevationChange={handleMinElevationChange}
+          passes={upcomingPasses}
+          crossings={upcomingCrossings}
+          telemetryReady={orbitalElements !== null}
+          nowMs={nowMs}
+          geolocationStatus={geolocationStatus}
+          onUseMyLocation={handleUseMyLocation}
+          locations={locations}
+          locationsSource={locationsSource}
+          locationName={locationName}
+          onLocationNameChange={setLocationName}
+          onSaveLocation={handleSaveLocation}
+          onLoadLocation={handleLoadLocation}
+          onDeleteLocation={handleDeleteLocation}
+          onCopyShareLink={handleCopyShareLink}
+          linkCopied={linkCopied}
+        />
       </div>
-
-      {drawerOpen && <div className="drawer-backdrop" onClick={() => setDrawerOpen(false)} />}
-
-      <aside ref={drawerRef} className={`drawer${drawerOpen ? ' drawer--open' : ''}`} aria-hidden={!drawerOpen}>
-        <div className="drawer-inner">
-          <div className="drawer-header">
-            <span>Mission Control</span>
-            <button ref={drawerCloseRef} className="drawer-close" onClick={() => setDrawerOpen(false)}>
-              ✕ Close
-            </button>
-          </div>
-
-          <MissionDashboard telemetry={telemetry} solarState={solarState} crew={people} sunriseCount={sunriseCount} sunsetCount={sunsetCount} />
-
-          <PassPredictor
-            observer={observer}
-            onSetObserver={handleSetObserver}
-            minElevationDeg={minElevationDeg}
-            onMinElevationChange={handleMinElevationChange}
-            passes={upcomingPasses}
-            crossings={upcomingCrossings}
-            telemetryReady={orbitalElements !== null}
-            nowMs={nowMs}
-            geolocationStatus={geolocationStatus}
-            onUseMyLocation={handleUseMyLocation}
-            locations={locations}
-            locationsSource={locationsSource}
-            locationName={locationName}
-            onLocationNameChange={setLocationName}
-            onSaveLocation={handleSaveLocation}
-            onLoadLocation={handleLoadLocation}
-            onDeleteLocation={handleDeleteLocation}
-            onCopyShareLink={handleCopyShareLink}
-            linkCopied={linkCopied}
-          />
-
-          <p className="drawer-footnote">
-            Position via Open Notify; altitude, orbital speed, and every prediction are derived from real
-            orbital mechanics (Kepler's third law, a closed-form circular ground-track propagator) — see the
-            README.
-          </p>
-          <p className="drawer-footnote">
-            Predictions assume a circular, non-precessing orbit at a fixed known inclination: accurate over
-            the windows shown here, but not a substitute for a real TLE-based ephemeris.
-          </p>
-        </div>
-      </aside>
     </div>
   );
 }

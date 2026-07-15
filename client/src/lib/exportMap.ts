@@ -1,6 +1,6 @@
 const EXPORT_WIDTH = 1600;
 const EXPORT_HEIGHT = 800;
-const BACKGROUND_FILL = '#05060c';
+const BACKGROUND_FILL = '#060709';
 
 /**
  * Rasterizes the live map — the SVG land/trail/marker layer plus the

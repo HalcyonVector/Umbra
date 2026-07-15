@@ -69,6 +69,18 @@ describe('predictVisiblePasses', () => {
     expect(first.startMs).toBeLessThanOrEqual(first.peakMs);
     expect(first.peakMs).toBeLessThanOrEqual(first.endMs);
     expect(first.peakElevationDeg).toBeGreaterThanOrEqual(10);
+
+    expect(first.track.length).toBeGreaterThan(0);
+    first.track.forEach((point) => {
+      expect(point.azimuthDeg).toBeGreaterThanOrEqual(0);
+      expect(point.azimuthDeg).toBeLessThan(360);
+      expect(point.elevationDeg).toBeGreaterThanOrEqual(10);
+    });
+    // The track's peak elevation sample should match the reported peak (same underlying walk).
+    const trackPeak = Math.max(...first.track.map((p) => p.elevationDeg));
+    expect(trackPeak).toBeCloseTo(first.peakElevationDeg, 6);
+    expect(first.startAzimuthDeg).toBe(first.track[0].azimuthDeg);
+    expect(first.endAzimuthDeg).toBe(first.track[first.track.length - 1].azimuthDeg);
   });
 
   it('finds no passes when the observer never gets dark enough (near-equatorial observer at a bright instant)', () => {

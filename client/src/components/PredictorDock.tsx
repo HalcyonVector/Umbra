@@ -3,17 +3,17 @@ import type { LocationPreset } from '../types';
 import type { LocationSource } from '../lib/presetsStore';
 import type { PassPrediction, CrossingPrediction } from '../orbital/eventPrediction';
 import { formatDurationShort } from '../lib/formatTime';
+import { SkyPlot } from './SkyPlot';
 
 export type GeolocationStatus = 'idle' | 'locating' | 'denied' | 'unsupported' | 'error';
 
-interface PassPredictorProps {
+interface PredictorDockProps {
   observer: { lat: number; lon: number } | null;
   onSetObserver: (loc: { lat: number; lon: number }) => void;
   minElevationDeg: number;
   onMinElevationChange: (v: number) => void;
   passes: PassPrediction[];
   crossings: CrossingPrediction[];
-  /** False until at least two live ISS fixes have arrived and an orbit could be derived — distinguishes "nothing computed yet" from "computed and genuinely empty." */
   telemetryReady: boolean;
   nowMs: number;
   geolocationStatus: GeolocationStatus;
@@ -29,6 +29,16 @@ interface PassPredictorProps {
   linkCopied: boolean;
 }
 
+type ManifestEntry =
+  | { kind: 'pass'; atMs: number; pass: PassPrediction }
+  | { kind: 'sunrise' | 'sunset'; atMs: number };
+
+function buildManifest(passes: PassPrediction[], crossings: CrossingPrediction[]): ManifestEntry[] {
+  const passEntries: ManifestEntry[] = passes.map((p) => ({ kind: 'pass', atMs: p.startMs, pass: p }));
+  const crossingEntries: ManifestEntry[] = crossings.map((c) => ({ kind: c.direction, atMs: c.atMs }));
+  return [...passEntries, ...crossingEntries].sort((a, b) => a.atMs - b.atMs);
+}
+
 function fillVar(value: number, min: number, max: number): CSSProperties {
   return { '--val': (value - min) / (max - min) } as CSSProperties;
 }
@@ -38,22 +48,32 @@ function fmtTime(ms: number): string {
 }
 
 const ICON_PROPS = {
-  width: 14,
-  height: 14,
+  width: 13,
+  height: 13,
   viewBox: '0 0 16 16',
   fill: 'none',
   stroke: 'currentColor',
-  strokeWidth: 1.5,
+  strokeWidth: 1.4,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
   'aria-hidden': true,
 };
 
+function IconTarget() {
+  return (
+    <svg {...ICON_PROPS} width={14} height={14}>
+      <circle cx="8" cy="8" r="5.5"></circle>
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none"></circle>
+      <path d="M8 1v2.4M8 12.6V15M1 8h2.4M12.6 8H15"></path>
+    </svg>
+  );
+}
+
 function IconLink() {
   return (
     <svg {...ICON_PROPS}>
-      <path d="M6.5 9.5 9.5 6.5" />
-      <path d="M7 4.2 8.3 2.9a2.6 2.6 0 0 1 3.7 3.7L10.7 7.9M9 11.8l-1.3 1.3a2.6 2.6 0 0 1-3.7-3.7L5.3 8.1" />
+      <path d="M6.5 9.5 9.5 6.5"></path>
+      <path d="M7 4.2 8.3 2.9a2.6 2.6 0 0 1 3.7 3.7L10.7 7.9M9 11.8l-1.3 1.3a2.6 2.6 0 0 1-3.7-3.7L5.3 8.1"></path>
     </svg>
   );
 }
@@ -61,7 +81,7 @@ function IconLink() {
 function IconCheck() {
   return (
     <svg {...ICON_PROPS}>
-      <path d="M3.2 8.4 6.3 11.5 12.8 5" />
+      <path d="M3.2 8.4 6.3 11.5 12.8 5"></path>
     </svg>
   );
 }
@@ -69,7 +89,7 @@ function IconCheck() {
 function IconPlay() {
   return (
     <svg {...ICON_PROPS} fill="currentColor" stroke="none">
-      <path d="M4.5 3.3v9.4a.6.6 0 0 0 .93.5l7.3-4.7a.6.6 0 0 0 0-1l-7.3-4.7a.6.6 0 0 0-.93.5Z" />
+      <path d="M4.5 3.3v9.4a.6.6 0 0 0 .93.5l7.3-4.7a.6.6 0 0 0 0-1l-7.3-4.7a.6.6 0 0 0-.93.5Z"></path>
     </svg>
   );
 }
@@ -77,19 +97,9 @@ function IconPlay() {
 function IconTrash() {
   return (
     <svg {...ICON_PROPS}>
-      <path d="M3.3 4.7h9.4" />
-      <path d="M6.2 4.7V3.3h3.6v1.4M6.7 7.3v3.6M9.3 7.3v3.6" />
-      <path d="M4.4 4.7 5 12.1c.05.6.55 1 1.15 1h3.7c.6 0 1.1-.4 1.15-1l.6-7.4" />
-    </svg>
-  );
-}
-
-function IconTarget() {
-  return (
-    <svg {...ICON_PROPS} width={22} height={22}>
-      <circle cx="8" cy="8" r="5.5" />
-      <circle cx="8" cy="8" r="1.4" fill="currentColor" stroke="none" />
-      <path d="M8 1v2.4M8 12.6V15M1 8h2.4M12.6 8H15" />
+      <path d="M3.3 4.7h9.4"></path>
+      <path d="M6.2 4.7V3.3h3.6v1.4M6.7 7.3v3.6M9.3 7.3v3.6"></path>
+      <path d="M4.4 4.7 5 12.1c.05.6.55 1 1.15 1h3.7c.6 0 1.1-.4 1.15-1l.6-7.4"></path>
     </svg>
   );
 }
@@ -102,14 +112,14 @@ const GEO_STATUS_LABEL: Record<GeolocationStatus, string | null> = {
   error: 'Could not get your location — enter coordinates manually.',
 };
 
-/** The "Mission Control" drawer's predictive half: where you're watching from, and what's coming up. */
-export function PassPredictor({
+/** The permanent right dock: where you're watching from, the sky-plot for the next pass, and what's coming up. */
+export function PredictorDock({
   observer, onSetObserver, minElevationDeg, onMinElevationChange,
   passes, crossings, telemetryReady, nowMs,
   geolocationStatus, onUseMyLocation,
   locations, locationsSource, locationName, onLocationNameChange, onSaveLocation, onLoadLocation, onDeleteLocation,
   onCopyShareLink, linkCopied,
-}: PassPredictorProps) {
+}: PredictorDockProps) {
   const [latInput, setLatInput] = useState(observer ? String(observer.lat.toFixed(4)) : '');
   const [lonInput, setLonInput] = useState(observer ? String(observer.lon.toFixed(4)) : '');
 
@@ -122,28 +132,56 @@ export function PassPredictor({
   };
 
   const geoMessage = GEO_STATUS_LABEL[geolocationStatus];
+  const nextPass = passes[0] ?? null;
+  const manifest = buildManifest(passes, crossings).slice(0, 6);
 
   return (
-    <div className="pass-predictor">
+    <aside className="dock">
+      <div>
+        <div className="dock-heading">
+          {observer ? 'Next pass' : 'Next pass · set a location'}
+        </div>
+        {nextPass ? (
+          <div className="next-pass">
+            <span className="next-pass-eta num">{formatDurationShort(nextPass.startMs - nowMs)}</span>
+            <span className="next-pass-meta">
+              {fmtTime(nextPass.startMs)} local &middot; {formatDurationShort(nextPass.endMs - nextPass.startMs)} visible &middot; peak {Math.round(nextPass.peakElevationDeg)}°
+            </span>
+          </div>
+        ) : (
+          <div className="next-pass">
+            <span className="next-pass-meta">
+              {!observer
+                ? 'Set a location below to predict visible passes.'
+                : !telemetryReady
+                  ? 'Waiting for live ISS telemetry to derive an orbit…'
+                  : 'No passes bright enough in the next 24 hours from here.'}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <SkyPlot pass={nextPass} />
+
       <div className="hud-card">
-        <h3>Watching from</h3>
-        <button type="button" className="locate-btn" onClick={onUseMyLocation} disabled={geolocationStatus === 'locating'}>
+        <div className="dock-heading" style={{ marginBottom: 10 }}>Watching from</div>
+        <button type="button" className="btn-console btn-console--wide" onClick={onUseMyLocation} disabled={geolocationStatus === 'locating'}>
           <IconTarget />
           {geolocationStatus === 'locating' ? 'Locating…' : 'Use my location'}
         </button>
         {geoMessage && <p className="hud-note">{geoMessage}</p>}
 
-        <div className="latlon-row">
-          <label>
-            <span>Latitude</span>
+        <div className="field-row">
+          <label className="field">
+            <span className="field-label">Lat</span>
             <input
               type="number" min={-90} max={90} step={0.0001} value={latInput}
               onChange={(e) => setLatInput(e.target.value)}
               onBlur={applyManualLocation}
             />
           </label>
-          <label>
-            <span>Longitude</span>
+          <label className="field">
+            <span className="field-label">Lon</span>
             <input
               type="number" min={-180} max={180} step={0.0001} value={lonInput}
               onChange={(e) => setLonInput(e.target.value)}
@@ -165,55 +203,31 @@ export function PassPredictor({
       </div>
 
       <div className="hud-card">
-        <h3>Next visible passes</h3>
-        {!observer ? (
-          <p className="hud-note">Set a location above to predict when the ISS will be visible overhead.</p>
-        ) : !telemetryReady ? (
-          <p className="hud-note">Waiting for live ISS telemetry to derive an orbit — this needs at least two position fixes from Open Notify, roughly 5-10 seconds apart. If this doesn't resolve, Open Notify may be temporarily unavailable (it has no uptime guarantee — see the README).</p>
-        ) : passes.length === 0 ? (
-          <p className="hud-note">No passes bright enough to spot in the next 24 hours from here.</p>
-        ) : (
-          <ul className="pass-list">
-            {passes.slice(0, 6).map((p) => (
-              <li key={p.startMs}>
-                <div className="pass-list-time">
-                  <b>{fmtTime(p.startMs)}</b>
-                  <span>in {formatDurationShort(p.startMs - nowMs)}</span>
-                </div>
-                <div className="pass-list-detail">
-                  <span>{formatDurationShort(p.endMs - p.startMs)} long</span>
-                  <span>peak {Math.round(p.peakElevationDeg)}°</span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="hud-card">
-        <h3>Next terminator crossings</h3>
+        <div className="dock-heading" style={{ marginBottom: 6 }}>Manifest</div>
         {!telemetryReady ? (
           <p className="hud-note">Waiting for live ISS telemetry to derive an orbit…</p>
-        ) : crossings.length === 0 ? (
-          <p className="hud-note">No crossings found in the next 6 hours.</p>
+        ) : manifest.length === 0 ? (
+          <p className="hud-note">Nothing upcoming in the prediction window.</p>
         ) : (
-          <ul className="crossing-list">
-            {crossings.slice(0, 4).map((c) => (
-              <li key={c.atMs}>
-                <span className={`crossing-dot crossing-dot--${c.direction}`} />
-                <span className="crossing-label">{c.direction === 'sunrise' ? 'Sunrise' : 'Sunset'}</span>
-                <span>in {formatDurationShort(c.atMs - nowMs)}</span>
-              </li>
+          <div className="manifest">
+            {manifest.map((entry) => (
+              <div className="manifest-row" key={`${entry.kind}-${entry.atMs}`}>
+                <span className="manifest-kind">
+                  <span className={`manifest-dot ${entry.kind === 'pass' ? 'pass' : entry.kind === 'sunrise' ? 'day' : 'night'}`}></span>
+                  {entry.kind === 'pass' ? 'Visible pass' : entry.kind === 'sunrise' ? 'Sunrise' : 'Sunset'}
+                </span>
+                <span className="manifest-time num">in {formatDurationShort(entry.atMs - nowMs)}</span>
+              </div>
             ))}
-          </ul>
+          </div>
         )}
       </div>
 
       <div className="hud-card">
-        <h3>
-          <span>Saved locations</span>
-          {locationsSource === 'local' && <span className="badge">offline · saved locally</span>}
-        </h3>
+        <div className="dock-heading" style={{ marginBottom: 10 }}>
+          Saved locations
+          {locationsSource === 'local' && <span className="badge">offline</span>}
+        </div>
         <div className="preset-save-row">
           <input
             type="text" placeholder="Name this location…" value={locationName}
@@ -238,18 +252,10 @@ export function PassPredictor({
             {locations.map((loc) => (
               <li key={loc.name}>
                 <span>{loc.name}</span>
-                <button
-                  className="preset-action-btn"
-                  onClick={() => onLoadLocation(loc.name)}
-                  aria-label={`Load location ${loc.name}`}
-                >
+                <button className="preset-action-btn" onClick={() => onLoadLocation(loc.name)} aria-label={`Load location ${loc.name}`}>
                   <IconPlay /> Load
                 </button>
-                <button
-                  className="preset-action-btn preset-action-btn--danger"
-                  onClick={() => onDeleteLocation(loc.name)}
-                  aria-label={`Delete location ${loc.name}`}
-                >
+                <button className="preset-action-btn preset-action-btn--danger" onClick={() => onDeleteLocation(loc.name)} aria-label={`Delete location ${loc.name}`}>
                   <IconTrash />
                 </button>
               </li>
@@ -257,6 +263,11 @@ export function PassPredictor({
           </ul>
         )}
       </div>
-    </div>
+
+      <p className="dock-footnote">
+        Predictions assume a circular, non-precessing orbit at a fixed known inclination — accurate over the
+        windows shown here, not a substitute for a real TLE-based ephemeris.
+      </p>
+    </aside>
   );
 }

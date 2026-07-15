@@ -1,4 +1,4 @@
-import { haversineDistanceKm, toDegrees, EARTH_RADIUS_KM } from './greatCircle';
+import { haversineDistanceKm, initialBearingDeg, toDegrees, EARTH_RADIUS_KM } from './greatCircle';
 import { isDaylight, solarElevationDeg } from './solarTerminator';
 
 /**
@@ -21,6 +21,19 @@ export function satelliteElevationDeg(observerLat: number, observerLon: number, 
   const ratio = EARTH_RADIUS_KM / (EARTH_RADIUS_KM + altitudeKm);
   const elevationRad = Math.atan2(Math.cos(gamma) - ratio, Math.sin(gamma));
   return toDegrees(elevationRad);
+}
+
+/**
+ * The compass bearing (deg, 0=N/90=E/180=S/270=W) from an observer toward
+ * the satellite's sub-point — what direction to look. This uses the
+ * great-circle bearing to the sub-satellite point rather than a full
+ * topocentric azimuth correction for the satellite's height above the
+ * horizon: a good approximation near the horizon (where the direction
+ * matters most for spotting a rising/setting pass) and effectively
+ * meaningless-but-harmless near the zenith (any direction is "up").
+ */
+export function satelliteAzimuthDeg(observerLat: number, observerLon: number, subLat: number, subLon: number): number {
+  return initialBearingDeg(observerLat, observerLon, subLat, subLon);
 }
 
 export interface VisibilityOptions {
