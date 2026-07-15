@@ -4,23 +4,37 @@ import { feature } from 'topojson-client';
 // is real cartography with no external map-tile API or key.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import worldTopology from 'world-atlas/land-110m.json';
-import { geometryToSvgPath, pathFromTrail, projectEquirectangular, computeNightMaskGrid, type ProjectedPoint, type LatLonLike } from '../map/projection';
+import { geometryToSvgPath, pathFromTrail, projectMercator, mercatorViewHeight, computeNightMaskGrid, type ProjectedPoint, type LatLonLike } from '../map/projection';
 
+// Web Mercator, not equirectangular: equirectangular is mathematically
+// simpler but looks *wrong* to everyone — it flattens high latitudes
+// (Europe, Canada, Russia) and doesn't match the mental model of a "world
+// map" that Google Maps/every flight tracker/every weather app trained
+// everyone on. Clamped to +-78deg (the ISS never exceeds +-51.6deg of
+// latitude, so this comfortably shows every populated landmass without
+// ever needing to render the poles, where Mercator diverges to infinity).
+const MAX_LAT_DEG = 78;
 const VIEW_WIDTH = 1000;
-const VIEW_HEIGHT = 500;
+const VIEW_HEIGHT = mercatorViewHeight(VIEW_WIDTH, MAX_LAT_DEG);
 const NIGHT_GRID_COLS = 120;
 const NIGHT_GRID_ROWS = 60;
+const NIGHT_CANVAS_WIDTH = NIGHT_GRID_COLS * 2;
+const NIGHT_CANVAS_HEIGHT = Math.round(mercatorViewHeight(NIGHT_CANVAS_WIDTH, MAX_LAT_DEG));
+
+function project(lon: number, lat: number): ProjectedPoint {
+  return projectMercator(lon, lat, VIEW_WIDTH, MAX_LAT_DEG);
+}
 
 // Colors are inlined as literal values (not CSS custom properties) so the
-// map never depends on the page stylesheet loading first. Land is
-// deliberately lighter than ocean so there's real contrast even before the
-// night overlay is added — the previous palette clustered everything near
-// black, so day and night both just read as "dark."
-const OCEAN_FILL = '#0d1119';
-const LAND_FILL = '#1e2531';
-const LAND_STROKE = 'rgba(238, 241, 244, 0.12)';
-const EQUATOR_STROKE = '#262e3d';
-const OBSERVED_TRAIL_STROKE = '#454e60';
+// map never depends on the page stylesheet loading first. Land is a warm
+// stone tone against a cool blue ocean — the standard cartographic
+// convention (every atlas, every weather map) — rather than the previous
+// palette's blue-on-blue, which read as monotone.
+const OCEAN_FILL = '#0a121e';
+const LAND_FILL = '#2b2721';
+const LAND_STROKE = 'rgba(238, 233, 224, 0.14)';
+const EQUATOR_STROKE = '#22303f';
+const OBSERVED_TRAIL_STROKE = '#4a5568';
 const PREDICTED_TRAIL_STROKE = '#6fe0c9';
 const ISS_HALO_STROKE = '#eef1f4';
 const ISS_DOT_FILL = '#eef1f4';
@@ -54,10 +68,20 @@ function MapLayer({ landPaths, projected, observedTrailPath, predictedTrailPath,
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.fillStyle = 'rgba(3, 5, 10, 0.42)';
     const cellW = canvas.width / NIGHT_GRID_COLS;
-    const cellH = canvas.height / NIGHT_GRID_ROWS;
+
+    // Each grid row spans an equal band of latitude, but Mercator does NOT
+    // map equal latitude bands to equal pixel heights — bands stretch
+    // taller approaching the crop latitude. Projecting each row's actual
+    // top/bottom latitude keeps the shading aligned with the land/trail
+    // layer instead of drifting away from it toward the edges.
     for (let row = 0; row < NIGHT_GRID_ROWS; row++) {
+      const latTop = 90 - (row / NIGHT_GRID_ROWS) * 180;
+      const latBottom = 90 - ((row + 1) / NIGHT_GRID_ROWS) * 180;
+      if (latBottom > MAX_LAT_DEG || latTop < -MAX_LAT_DEG) continue;
+      const yTop = projectMercator(0, latTop, canvas.width, MAX_LAT_DEG).y;
+      const yBottom = projectMercator(0, latBottom, canvas.width, MAX_LAT_DEG).y;
       for (let col = 0; col < NIGHT_GRID_COLS; col++) {
-        if (grid[row][col]) ctx.fillRect(col * cellW, row * cellH, cellW + 0.5, cellH + 0.5);
+        if (grid[row][col]) ctx.fillRect(col * cellW, yTop, cellW + 0.5, yBottom - yTop + 0.5);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,7 +114,7 @@ function MapLayer({ landPaths, projected, observedTrailPath, predictedTrailPath,
           </g>
         )}
       </svg>
-      <canvas ref={nightCanvasRef} width={NIGHT_GRID_COLS * 2} height={NIGHT_GRID_ROWS * 2} className="map-night-canvas" />
+      <canvas ref={nightCanvasRef} width={NIGHT_CANVAS_WIDTH} height={NIGHT_CANVAS_HEIGHT} className="map-night-canvas" />
     </div>
   );
 }
@@ -127,7 +151,6 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   }, [translateX]);
 
   const landPaths = useMemo(() => {
-    const project = (lon: number, lat: number) => projectEquirectangular(lon, lat, VIEW_WIDTH, VIEW_HEIGHT);
     try {
       const topology = worldTopology as unknown as Parameters<typeof feature>[0];
       const objects = (topology as { objects: Record<string, unknown> }).objects;
@@ -147,7 +170,6 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     }
   }, []);
 
-  const project = (lon: number, lat: number) => projectEquirectangular(lon, lat, VIEW_WIDTH, VIEW_HEIGHT);
   const projected = position ? project(position.lon, position.lat) : null;
   const projectedObserver = observer ? project(observer.lon, observer.lat) : null;
   const equatorY = project(0, 0).y;

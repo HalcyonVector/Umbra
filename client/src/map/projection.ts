@@ -24,6 +24,44 @@ export function unprojectEquirectangular(x: number, y: number, width: number, he
 }
 
 /**
+ * The "radians" form of the Web Mercator y-coordinate: ln(tan(pi/4 + lat/2)).
+ * Grows without bound toward the poles — callers clamp latitude first.
+ */
+export function mercatorYRad(latDeg: number): number {
+  const latRad = (latDeg * Math.PI) / 180;
+  return Math.log(Math.tan(Math.PI / 4 + latRad / 2));
+}
+
+/**
+ * The viewBox height a Mercator projection needs for a given `width` (which
+ * spans the full 360deg of longitude) so that latitude `maxLatDeg` lands
+ * exactly on the top/bottom edge — i.e. the height that makes the
+ * projection conformal (no stretching) at the chosen crop latitude.
+ */
+export function mercatorViewHeight(width: number, maxLatDeg: number): number {
+  return (width * mercatorYRad(maxLatDeg)) / Math.PI;
+}
+
+/**
+ * Web Mercator: the projection literally everyone recognizes as "a world
+ * map" (Google Maps, weather apps, flight trackers) — unlike equirectangular,
+ * it's conformal (shapes near a point look locally correct), at the cost of
+ * exaggerating area near the poles. Latitude is clamped to +-maxLatDeg
+ * before projecting (Mercator y diverges at +-90) — the ISS never exceeds
+ * +-51.6deg of latitude, so a `maxLatDeg` around 75-80 comfortably shows
+ * every populated landmass without ever needing to render the poles.
+ */
+export function projectMercator(lon: number, lat: number, width: number, maxLatDeg: number): ProjectedPoint {
+  const clampedLat = Math.max(-maxLatDeg, Math.min(maxLatDeg, lat));
+  const x = ((lon + 180) / 360) * width;
+  const yMaxRad = mercatorYRad(maxLatDeg);
+  const yRad = mercatorYRad(clampedLat);
+  const height = mercatorViewHeight(width, maxLatDeg);
+  const y = (height * (yMaxRad - yRad)) / (2 * yMaxRad);
+  return { x, y };
+}
+
+/**
  * A GeoJSON Polygon/MultiPolygon ring walker: projects every [lon, lat]
  * coordinate through `project` and joins the result into an SVG path `d`
  * string. Used to render the world-atlas land silhouette.

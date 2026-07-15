@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { projectEquirectangular, unprojectEquirectangular, geometryToSvgPath, pathFromTrail, computeNightMaskGrid, projectSkyPlot } from './projection';
+import {
+  projectEquirectangular, unprojectEquirectangular, geometryToSvgPath, pathFromTrail, computeNightMaskGrid, projectSkyPlot,
+  mercatorYRad, mercatorViewHeight, projectMercator,
+} from './projection';
 
 describe('projectEquirectangular / unprojectEquirectangular', () => {
   it('round-trips a point through project then unproject', () => {
@@ -139,5 +142,74 @@ describe('projectSkyPlot', () => {
   it('clamps out-of-range elevation rather than producing a point beyond the horizon ring', () => {
     const below = projectSkyPlot(0, -5, 100);
     expect(Math.hypot(below.x, below.y)).toBeCloseTo(100);
+  });
+});
+
+describe('mercatorYRad', () => {
+  it('is 0 at the equator', () => {
+    expect(mercatorYRad(0)).toBeCloseTo(0, 10);
+  });
+
+  it('is positive north of the equator and negative south, symmetric in magnitude', () => {
+    expect(mercatorYRad(45)).toBeGreaterThan(0);
+    expect(mercatorYRad(-45)).toBeLessThan(0);
+    expect(mercatorYRad(45)).toBeCloseTo(-mercatorYRad(-45), 10);
+  });
+
+  it('grows without bound approaching the pole', () => {
+    expect(mercatorYRad(89.9)).toBeGreaterThan(mercatorYRad(80));
+    expect(mercatorYRad(80)).toBeGreaterThan(mercatorYRad(60));
+  });
+});
+
+describe('mercatorViewHeight', () => {
+  it('scales linearly with width', () => {
+    const h1 = mercatorViewHeight(1000, 75);
+    const h2 = mercatorViewHeight(2000, 75);
+    expect(h2).toBeCloseTo(h1 * 2, 6);
+  });
+
+  it('is shorter for a smaller crop latitude (less of the pole-ward stretch included)', () => {
+    expect(mercatorViewHeight(1000, 60)).toBeLessThan(mercatorViewHeight(1000, 80));
+  });
+});
+
+describe('projectMercator', () => {
+  const WIDTH = 1000;
+  const MAX_LAT = 78;
+  const HEIGHT = mercatorViewHeight(WIDTH, MAX_LAT);
+
+  it('maps (0,0) lon/lat to the horizontal center, vertical center', () => {
+    const { x, y } = projectMercator(0, 0, WIDTH, MAX_LAT);
+    expect(x).toBeCloseTo(WIDTH / 2);
+    expect(y).toBeCloseTo(HEIGHT / 2, 1);
+  });
+
+  it('maps the west edge (-180) to x=0 and the east edge (180) to x=width', () => {
+    expect(projectMercator(-180, 0, WIDTH, MAX_LAT).x).toBeCloseTo(0);
+    expect(projectMercator(180, 0, WIDTH, MAX_LAT).x).toBeCloseTo(WIDTH);
+  });
+
+  it('maps +maxLatDeg to the top edge (y=0) and -maxLatDeg to the bottom edge (y=height)', () => {
+    expect(projectMercator(0, MAX_LAT, WIDTH, MAX_LAT).y).toBeCloseTo(0, 1);
+    expect(projectMercator(0, -MAX_LAT, WIDTH, MAX_LAT).y).toBeCloseTo(HEIGHT, 1);
+  });
+
+  it('clamps latitude beyond maxLatDeg to the same edge (never renders past the crop)', () => {
+    const atMax = projectMercator(0, MAX_LAT, WIDTH, MAX_LAT).y;
+    const beyond = projectMercator(0, 89.9, WIDTH, MAX_LAT).y;
+    expect(beyond).toBeCloseTo(atMax, 6);
+  });
+
+  it('is conformal: equal steps of latitude near the equator map to roughly equal pixel steps as equal steps of longitude', () => {
+    const dxPerDegLon = (projectMercator(1, 0, WIDTH, MAX_LAT).x - projectMercator(0, 0, WIDTH, MAX_LAT).x);
+    const dyPerDegLat = Math.abs(projectMercator(0, 1, WIDTH, MAX_LAT).y - projectMercator(0, 0, WIDTH, MAX_LAT).y);
+    expect(dyPerDegLat).toBeCloseTo(dxPerDegLon, 2);
+  });
+
+  it('exaggerates vertical spacing at high latitude relative to the equator (the real, expected Mercator distortion)', () => {
+    const dyNearEquator = Math.abs(projectMercator(0, 1, WIDTH, MAX_LAT).y - projectMercator(0, 0, WIDTH, MAX_LAT).y);
+    const dyNearMaxLat = Math.abs(projectMercator(0, MAX_LAT, WIDTH, MAX_LAT).y - projectMercator(0, MAX_LAT - 1, WIDTH, MAX_LAT).y);
+    expect(dyNearMaxLat).toBeGreaterThan(dyNearEquator);
   });
 });

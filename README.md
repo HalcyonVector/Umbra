@@ -99,7 +99,7 @@ umbra/
 ├── client/
 │   └── src/
 │       ├── orbital/          # pure orbital-mechanics/solar-geometry/propagator/visibility math + tests
-│       ├── map/               # equirectangular projection, trail paths, night-mask grid + tests
+│       ├── map/               # Mercator projection, trail paths, night-mask grid + tests
 │       ├── inputs/            # useIssFeed, useCrewFeed, useWakeLock
 │       ├── lib/                # clipboard, formatTime, localSettings, presetsStore, shareLink, trailStore
 │       └── components/         # MapScene, TelemetryRail, PredictorDock, SkyPlot, TopBar, ...
@@ -165,6 +165,7 @@ Every pure function in `orbital/`, `map/`, and `lib/` has a matching Vitest suit
 - **The equation-of-time and solar-declination formulas are low-order approximations** (NOAA's simplified forms), accurate to roughly a degree — not observatory-grade ephemeris, but plenty for a twilight/visibility threshold.
 - **The country lookup is coarse and antimeridian-naive**, using `world-atlas`'s 110m-resolution borders without special-casing countries whose bounding box wraps the ±180° seam.
 - **The night-mask shading is a sampled raster** (a 120×60 grid, independently solar-elevation-tested per cell), giving a soft/blocky edge rather than a mathematically exact terminator curve — a deliberate trade for robustness across the poles and the antimeridian.
+- **The map is cropped to ±78° latitude.** Mercator projection diverges to infinity at the poles, so something has to be clamped; 78° comfortably includes every populated landmass (and the ISS never exceeds ±51.6°) at the cost of never showing high Arctic/Antarctic territory.
 - **"Everyone in space" isn't ISS-only.** `astros.json` includes any currently-occupied station (historically also Tiangong).
 - **No two orbital elements are ever cross-validated against each other** — each derivation trusts its most recent 2-fix pair; a single corrupted-but-plausible pair of Open Notify samples could seed a bad prediction for a few minutes until the next fix corrects it.
 - **The PWA icons aren't maskable-safe.** Tagged `purpose: "any"`, not `"maskable"`.
