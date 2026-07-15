@@ -375,6 +375,12 @@ button.ghost:hover {
   inset: 0;
   width: 100%;
   height: 100%;
+  /* object-fit: cover scales the canvas uniformly (preserving its aspect
+     ratio) to fill the panel, matching the SVG's preserveAspectRatio="...
+     slice" behavior. Without this, the canvas stretched non-uniformly —
+     a different horizontal vs vertical scale factor than the SVG — so the
+     night shading silently drifted out of alignment with the land under it. */
+  object-fit: cover;
   pointer-events: none;
   filter: blur(5px);
 }

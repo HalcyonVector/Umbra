@@ -71,17 +71,33 @@ function MapLayer({ landPaths, projected, observedTrailPath, predictedTrailPath,
 
     // Each grid row spans an equal band of latitude, but Mercator does NOT
     // map equal latitude bands to equal pixel heights — bands stretch
-    // taller approaching the crop latitude. Projecting each row's actual
-    // top/bottom latitude keeps the shading aligned with the land/trail
-    // layer instead of drifting away from it toward the edges.
-    for (let row = 0; row < NIGHT_GRID_ROWS; row++) {
-      const latTop = 90 - (row / NIGHT_GRID_ROWS) * 180;
-      const latBottom = 90 - ((row + 1) / NIGHT_GRID_ROWS) * 180;
-      if (latBottom > MAX_LAT_DEG || latTop < -MAX_LAT_DEG) continue;
-      const yTop = projectMercator(0, latTop, canvas.width, MAX_LAT_DEG).y;
-      const yBottom = projectMercator(0, latBottom, canvas.width, MAX_LAT_DEG).y;
-      for (let col = 0; col < NIGHT_GRID_COLS; col++) {
-        if (grid[row][col]) ctx.fillRect(col * cellW, yTop, cellW + 0.5, yBottom - yTop + 0.5);
+    // taller approaching the crop latitude, so each row's actual pixel
+    // y-position is projected rather than assumed uniform.
+    const rowY: number[] = [];
+    for (let row = 0; row <= NIGHT_GRID_ROWS; row++) {
+      const lat = 90 - (row / NIGHT_GRID_ROWS) * 180;
+      rowY.push(projectMercator(0, lat, canvas.width, MAX_LAT_DEG).y);
+    }
+
+    // Merge consecutive same-state rows in each column into a single
+    // fillRect, rather than one rect per grid cell. Each row is only
+    // ~2-3 native canvas px tall (60 rows over a ~172px-tall canvas), so
+    // drawing one anti-aliased rect per cell left faint overlapping seams
+    // between same-colored neighbors at native resolution — invisible up
+    // close, but the canvas is later upscaled ~5x by CSS to fill the panel,
+    // which turned that seam noise into visible banding.
+    for (let col = 0; col < NIGHT_GRID_COLS; col++) {
+      let row = 0;
+      while (row < NIGHT_GRID_ROWS) {
+        if (!grid[row][col]) {
+          row++;
+          continue;
+        }
+        const runStart = row;
+        while (row < NIGHT_GRID_ROWS && grid[row][col]) row++;
+        const yTop = rowY[runStart];
+        const yBottom = rowY[row];
+        if (yBottom > yTop) ctx.fillRect(col * cellW, yTop, cellW + 0.5, yBottom - yTop);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
