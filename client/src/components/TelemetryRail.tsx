@@ -92,15 +92,24 @@ function OdometerIcon() {
   );
 }
 
+function IconChevron() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="details-chevron">
+      <path d="M4.5 6 8 10 11.5 6" />
+    </svg>
+  );
+}
+
 function fmt(n: number, digits = 1) {
   return n.toFixed(digits);
 }
 
 /**
- * The permanent left instrument cluster — always visible, no toggle. An
- * orbit-progress dial anchors it, telemetry rows carry the live-derived
- * numbers, and crew is encoded as both a count and a row of dots — a
- * literal visual census, one mark per person currently in space.
+ * The left instrument cluster. An orbit-progress dial anchors a permanent
+ * hero card; everything else (telemetry, crew, odometer, countries) is a
+ * click-to-expand <details> section, open by default, matching the dock's
+ * pattern — so on a narrow screen these can be collapsed instead of forcing
+ * a long scroll before reaching the map.
  */
 export function TelemetryRail({
   telemetry, solarState, crew, sunriseCount, sunsetCount,
@@ -112,7 +121,7 @@ export function TelemetryRail({
   const earthTrips = totalDistanceKm / EARTH_CIRCUMFERENCE_KM;
 
   return (
-    <aside className="rail">
+    <aside className="rail" data-tour="rail">
       <div className="hud-card rail-card rail-card--hero">
         <div className="orbit-dial">
           <svg viewBox="0 0 108 108" width="108" height="108">
@@ -143,8 +152,10 @@ export function TelemetryRail({
         </div>
       </div>
 
-      <div className="hud-card rail-card">
-        <div className="rail-section-label">Telemetry</div>
+      <details className="hud-card rail-card" open>
+        <summary className="rail-section-label dock-heading--clickable">
+          <span><IconChevron /> Telemetry</span>
+        </summary>
         <div className="telemetry-row">
           <span className="telemetry-icon"><AltitudeIcon /></span>
           <span>
@@ -174,10 +185,12 @@ export function TelemetryRail({
         {telemetry.orbitalSpeedKmS != null && (
           <p className="rail-fun-fact">{fmt(speedAsJetMultiple(telemetry.orbitalSpeedKmS), 0)}× a commercial jet</p>
         )}
-      </div>
+      </details>
 
-      <div className="hud-card rail-card">
-        <div className="rail-section-label">Crew aboard</div>
+      <details className="hud-card rail-card" open>
+        <summary className="rail-section-label dock-heading--clickable">
+          <span><IconChevron /> Crew aboard</span>
+        </summary>
         <div className="crew-row">
           {telemetry.crewCount > 0 ? (
             <>
@@ -192,10 +205,12 @@ export function TelemetryRail({
             <span className="rail-value num" style={{ fontSize: '15px' }}>—</span>
           )}
         </div>
-      </div>
+      </details>
 
-      <div className="hud-card rail-card">
-        <div className="rail-section-label">Session odometer</div>
+      <details className="hud-card rail-card" open>
+        <summary className="rail-section-label dock-heading--clickable">
+          <span><IconChevron /> Session odometer</span>
+        </summary>
         <div className="telemetry-row">
           <span className="telemetry-icon"><OdometerIcon /></span>
           <span>
@@ -210,13 +225,13 @@ export function TelemetryRail({
               : `${fmt(earthTrips, 2)}× around Earth`}
           </p>
         )}
-      </div>
+      </details>
 
-      <div className="hud-card rail-card">
-        <div className="rail-section-label">
-          Countries overflown
+      <details className="hud-card rail-card" open>
+        <summary className="rail-section-label dock-heading--clickable">
+          <span><IconChevron /> Countries overflown</span>
           <span className="rail-section-count num">{countriesOverflown.length}</span>
-        </div>
+        </summary>
         {countriesOverflown.length === 0 ? (
           <p className="hud-note">None yet this session.</p>
         ) : (
@@ -229,7 +244,7 @@ export function TelemetryRail({
             ))}
           </div>
         )}
-      </div>
+      </details>
 
       <div className="rail-foot">Position via Open Notify, with an automatic fallback feed if it's down. Altitude, speed, and orbit shape are derived, not reported.</div>
     </aside>

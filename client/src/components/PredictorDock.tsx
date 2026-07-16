@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import type { PassPrediction, CrossingPrediction, LocalTwilightTransition } from '../orbital/eventPrediction';
+import { isNotablePass, type PassPrediction, type CrossingPrediction, type LocalTwilightTransition } from '../orbital/eventPrediction';
 import { formatDurationShort } from '../lib/formatTime';
 import { SkyPlot } from './SkyPlot';
 
@@ -78,6 +78,14 @@ function IconMoon() {
   );
 }
 
+function IconStar() {
+  return (
+    <svg {...ICON_PROPS} width={11} height={11} fill="currentColor" stroke="none" strokeLinejoin="round">
+      <path d="M8 1.2l1.98 4.28 4.62.56-3.42 3.24.9 4.72L8 11.7l-4.08 2.3.9-4.72L1.4 6.04l4.62-.56Z"></path>
+    </svg>
+  );
+}
+
 const GEO_STATUS_LABEL: Record<GeolocationStatus, string | null> = {
   idle: null,
   locating: 'Locating…',
@@ -117,7 +125,7 @@ export function PredictorDock({
   const manifest = buildManifest(passes, crossings).slice(0, 6);
 
   return (
-    <aside className="dock">
+    <aside className="dock" data-tour="dock">
       <div className="hud-card dock-card--hero">
         <div className="dock-heading">
           {observer ? 'Next pass' : 'Next pass · set a location'}
@@ -151,7 +159,7 @@ export function PredictorDock({
         </div>
       )}
 
-      <details className="dock-section hud-card">
+      <details className="dock-section hud-card" data-tour="sky-chart">
         <summary className="dock-heading dock-heading--clickable">
           <IconChevron />
           Sky chart
@@ -231,15 +239,26 @@ export function PredictorDock({
           <p className="hud-note">Nothing upcoming in the prediction window.</p>
         ) : (
           <div className="manifest">
-            {manifest.map((entry) => (
-              <div className="manifest-row" key={`${entry.kind}-${entry.atMs}`}>
-                <span className="manifest-kind">
-                  <span className={`manifest-dot ${entry.kind === 'pass' ? 'pass' : entry.kind === 'sunrise' ? 'day' : 'night'}`}></span>
-                  {entry.kind === 'pass' ? 'Visible pass' : entry.kind === 'sunrise' ? 'Sunrise' : 'Sunset'}
-                </span>
-                <span className="manifest-time num">in {formatDurationShort(entry.atMs - nowMs)}</span>
-              </div>
-            ))}
+            {manifest.map((entry) => {
+              const notable = entry.kind === 'pass' && isNotablePass(entry.pass);
+              return (
+                <div className={`manifest-row${notable ? ' manifest-row--notable' : ''}`} key={`${entry.kind}-${entry.atMs}`}>
+                  <span className="manifest-kind">
+                    {notable ? (
+                      <span className="manifest-dot manifest-dot--star"><IconStar /></span>
+                    ) : (
+                      <span className={`manifest-dot ${entry.kind === 'pass' ? 'pass' : entry.kind === 'sunrise' ? 'day' : 'night'}`}></span>
+                    )}
+                    {entry.kind === 'pass'
+                      ? notable
+                        ? `Great pass · ${Math.round(entry.pass.peakElevationDeg)}° peak`
+                        : 'Visible pass'
+                      : entry.kind === 'sunrise' ? 'Sunrise' : 'Sunset'}
+                  </span>
+                  <span className="manifest-time num">in {formatDurationShort(entry.atMs - nowMs)}</span>
+                </div>
+              );
+            })}
           </div>
         )}
       </details>

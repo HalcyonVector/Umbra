@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { predictTerminatorCrossings, predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow } from './eventPrediction';
+import { predictTerminatorCrossings, predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow, isNotablePass, type PassPrediction } from './eventPrediction';
 import { deriveOrbitalElements, propagateSubSatellitePoint, ISS_INCLINATION_DEG, type OrbitalElements } from './groundTrackPropagator';
 import { subsolarPoint, isDaylight, solarElevationDeg } from './solarTerminator';
 import { satelliteElevationDeg } from './visibility';
@@ -103,6 +103,37 @@ describe('predictVisiblePasses', () => {
     const passes = predictVisiblePasses(elements, observer.lat, observer.lon, ISS_MEAN_ALTITUDE_KM, EPOCH, 2 * 60_000);
     // A single fast-moving pass lasting a couple of minutes should not fragment into multiple entries.
     expect(passes.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('isNotablePass', () => {
+  function makePass(overrides: Partial<PassPrediction>): PassPrediction {
+    return {
+      startMs: 0,
+      peakMs: 60_000,
+      endMs: 120_000,
+      peakElevationDeg: 20,
+      startAzimuthDeg: 0,
+      endAzimuthDeg: 90,
+      track: [],
+      ...overrides,
+    };
+  }
+
+  it('is notable when the peak elevation is high, even if brief', () => {
+    expect(isNotablePass(makePass({ peakElevationDeg: 60, startMs: 0, endMs: 90_000 }))).toBe(true);
+  });
+
+  it('is notable when the duration is long, even at a low peak elevation', () => {
+    expect(isNotablePass(makePass({ peakElevationDeg: 15, startMs: 0, endMs: 5 * 60_000 }))).toBe(true);
+  });
+
+  it('is not notable when neither condition is met (a marginal pass)', () => {
+    expect(isNotablePass(makePass({ peakElevationDeg: 12, startMs: 0, endMs: 90_000 }))).toBe(false);
+  });
+
+  it('is notable when both conditions are comfortably met', () => {
+    expect(isNotablePass(makePass({ peakElevationDeg: 70, startMs: 0, endMs: 6 * 60_000 }))).toBe(true);
   });
 });
 

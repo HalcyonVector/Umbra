@@ -1,6 +1,9 @@
 const MIN_ELEVATION_KEY = 'umbra:minElevation';
 const OBSERVER_KEY = 'umbra:observer';
-const ONBOARDED_KEY = 'umbra:onboarded';
+// v2: bumped when the onboarding banner became a multi-step guided tour, so
+// everyone sees the richer tour once even if they'd already dismissed the
+// old single banner.
+const ONBOARDED_KEY = 'umbra:onboarded:v2';
 
 /** Small persisted-settings helpers: local-only, best-effort, never throw. A blocked or full
  * localStorage just means the app falls back to defaults instead of crashing. */

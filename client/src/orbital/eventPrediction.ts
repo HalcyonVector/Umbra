@@ -87,6 +87,21 @@ interface OpenPass {
   track: PassTrackPoint[];
 }
 
+const NOTABLE_PEAK_ELEVATION_DEG = 50;
+const NOTABLE_DURATION_MS = 4 * 60_000;
+
+/**
+ * Whether a predicted pass is genuinely worth going outside for, as opposed
+ * to a marginal one worth listing but not planning around: either it climbs
+ * high overhead (>=50deg peak elevation — well clear of horizon haze and
+ * obstructions) or it stays visible for a good stretch (>=4 minutes) — the
+ * two independent reasons a pass reads as "great" to naked-eye satellite
+ * spotters, either one being enough on its own.
+ */
+export function isNotablePass(pass: PassPrediction): boolean {
+  return pass.peakElevationDeg >= NOTABLE_PEAK_ELEVATION_DEG || pass.endMs - pass.startMs >= NOTABLE_DURATION_MS;
+}
+
 function finalizePass(open: OpenPass, endMs: number): PassPrediction {
   const track = open.track;
   return {

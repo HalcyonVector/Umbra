@@ -232,6 +232,7 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     <div
       ref={containerRef}
       className="map-viewport"
+      data-tour="map"
       role="img"
       aria-label="Live world map showing the ISS's position and ground track. Pan and zoom to explore."
     />

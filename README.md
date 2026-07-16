@@ -169,7 +169,7 @@ Every pure function in `orbital/`, `map/`, and `lib/` has a matching Vitest suit
 - **The map is a standard Leaflet + OpenStreetMap/CARTO tile basemap**, not a from-scratch projection — this is a deliberate trade for correctness and familiarity (real coastlines, borders, and place names, native pan/zoom) over building custom cartography.
 - **"Everyone in space" isn't ISS-only.** `astros.json` includes any currently-occupied station (historically also Tiangong).
 - **No two orbital elements are ever cross-validated against each other** — each derivation trusts its most recent 2-fix pair; a single corrupted-but-plausible pair of Open Notify samples could seed a bad prediction for a few minutes until the next fix corrects it.
-- **The PWA icons aren't maskable-safe.** Tagged `purpose: "any"`, not `"maskable"`.
+- **Only one maskable icon variant exists** (`icon-maskable.svg`, foreground content scaled to fit the standard ~80%-diameter safe zone) — there's no separate maskable PNG fallback for browsers that don't accept SVG manifest icons.
 - **The map's tile basemap requires network access to CARTO's tile CDN.** Unlike the rest of the app (which degrades gracefully when Open Notify is unreachable), the basemap tiles themselves have no offline fallback.
 
 ## Suggested Future Features

@@ -21,7 +21,7 @@ import {
 } from './lib/localSettings';
 import { MapScene } from './components/MapScene';
 import { TopBar } from './components/TopBar';
-import { OnboardingHint } from './components/OnboardingHint';
+import { TourOverlay } from './components/TourOverlay';
 import { TelemetryRail } from './components/TelemetryRail';
 import { PredictorDock, type GeolocationStatus } from './components/PredictorDock';
 import { ToastStack, type ToastItem } from './components/ToastStack';
@@ -51,7 +51,7 @@ export default function App() {
   const [observer, setObserverState] = useState<{ lat: number; lon: number } | null>(() => loadStoredObserver());
   const [minElevationDeg, setMinElevationDeg] = useState(() => loadStoredMinElevation(10));
   const [geolocationStatus, setGeolocationStatus] = useState<GeolocationStatus>('idle');
-  const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
+  const [showTour, setShowTour] = useState(() => !hasSeenOnboarding());
   const [trail, setTrail] = useState<TrackPoint[]>(() => loadTrail());
   const [groundSpeedKmh, setGroundSpeedKmh] = useState<number | null>(null);
   const [bearingDeg, setBearingDeg] = useState<number | null>(null);
@@ -77,8 +77,8 @@ export default function App() {
     setToasts((t) => t.filter((x) => x.id !== id));
   };
 
-  const dismissOnboarding = () => {
-    setShowOnboarding(false);
+  const finishTour = () => {
+    setShowTour(false);
     markOnboardingSeen();
   };
 
@@ -363,8 +363,6 @@ export default function App() {
     <div className="umbra-shell">
       <TopBar nowMs={nowMs} consecutiveFailures={consecutiveFailures} lastFixMs={lastFixMs} />
 
-      {showOnboarding && <OnboardingHint onDismiss={dismissOnboarding} />}
-
       <div className="body-grid">
         <TelemetryRail
           telemetry={telemetry}
@@ -403,6 +401,7 @@ export default function App() {
       </div>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
+      {showTour && <TourOverlay onFinish={finishTour} />}
     </div>
   );
 }

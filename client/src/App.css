@@ -76,7 +76,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .onboarding-banner { animation: none !important; }
   .iss-halo { animation: none !important; }
   .toast { animation: none !important; }
 }
@@ -137,29 +136,66 @@
   font-weight: 500;
 }
 
-/* ---------- Onboarding banner ---------- */
+/* ---------- Guided tour ---------- */
 
-.onboarding-banner {
+.tour-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.tour-spotlight {
+  position: fixed;
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(3, 4, 6, 0.78);
+  outline: 1px solid var(--accent-dim);
+  pointer-events: none;
+  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
+}
+
+.tour-card {
+  position: fixed;
+  background: var(--panel-raised);
+  border: 1px solid var(--accent-dim);
+  padding: 16px;
+  pointer-events: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.tour-card-step {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.tour-card h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.tour-card p {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.tour-card-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 10px 18px;
-  background: var(--panel-raised);
-  border-bottom: 1px solid var(--line);
-  font-size: 12.5px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-  animation: hint-in 0.3s ease;
-  flex-shrink: 0;
+  justify-content: space-between;
+  gap: 8px;
 }
 
-.onboarding-banner p {
-  margin: 0;
-  flex: 1;
-}
-
-.onboarding-banner button {
-  flex-shrink: 0;
+@media (prefers-reduced-motion: reduce) {
+  .tour-spotlight, .tour-card { animation: none !important; transition: none !important; }
 }
 
 /* ---------- Buttons / generic controls ---------- */
@@ -206,8 +242,16 @@ button.ghost:hover {
 
   .body-grid {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 320px auto;
+    grid-template-rows: min(48vh, 420px) auto auto;
   }
+
+  /* The map is the centerpiece — it should be the first thing you see on a
+     narrow screen, not buried below however many stat cards the rail has
+     accumulated. Grid auto-placement respects `order`, so this reorders
+     without touching the component tree. */
+  .map-viewport { order: 1; }
+  .rail { order: 2; }
+  .dock { order: 3; }
 }
 
 /* ---------- Left telemetry rail ---------- */
@@ -868,6 +912,28 @@ details[open] > .dock-heading--clickable .details-chevron {
 .manifest-dot.day { background: var(--day); box-shadow: 0 0 5px 1px rgba(242, 177, 85, 0.4); }
 .manifest-dot.night { background: var(--night); box-shadow: 0 0 5px 1px rgba(124, 147, 224, 0.4); }
 .manifest-dot.pass { background: var(--accent); box-shadow: 0 0 5px 1px var(--accent-glow); }
+
+.manifest-row--notable {
+  background: linear-gradient(90deg, rgba(242, 177, 85, 0.08), transparent 70%);
+  margin: 0 -14px;
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.manifest-dot--star {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: var(--day);
+  display: flex;
+}
+
+.manifest-row--notable .manifest-kind {
+  color: var(--day);
+  font-weight: 500;
+}
 
 .manifest-time {
   font-family: var(--font-mono);
