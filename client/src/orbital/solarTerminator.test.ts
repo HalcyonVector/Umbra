@@ -5,6 +5,7 @@ import {
   solarElevationDeg,
   isDaylight,
   terminatorProximity,
+  terminatorLatitudeDeg,
 } from './solarTerminator';
 import { destinationPoint, normalizeDeg180, EARTH_RADIUS_KM } from './greatCircle';
 
@@ -53,6 +54,29 @@ describe('isDaylight', () => {
     expect(isDaylight(sub.lat, sub.lon, date)).toBe(true);
     const antipode = { lat: -sub.lat, lon: normalizeDeg180(sub.lon + 180) };
     expect(isDaylight(antipode.lat, antipode.lon, date)).toBe(false);
+  });
+});
+
+describe('terminatorLatitudeDeg', () => {
+  it('returns a latitude where solar elevation is actually ~0, across many longitudes and dates', () => {
+    const dates = ['2026-03-25T10:00:00Z', '2026-06-21T00:00:00Z', '2026-09-10T18:30:00Z', '2026-12-21T06:00:00Z'];
+    for (const iso of dates) {
+      const date = new Date(iso);
+      for (let lon = -180; lon <= 180; lon += 20) {
+        const lat = terminatorLatitudeDeg(lon, date);
+        expect(solarElevationDeg(lat, lon, date)).toBeCloseTo(0, 1);
+      }
+    }
+  });
+
+  it('does not divide by zero near an equinox (declination ~0)', () => {
+    const date = new Date('2026-03-20T12:00:00Z');
+    for (let lon = -180; lon <= 180; lon += 30) {
+      const lat = terminatorLatitudeDeg(lon, date);
+      expect(Number.isFinite(lat)).toBe(true);
+      expect(lat).toBeGreaterThanOrEqual(-90);
+      expect(lat).toBeLessThanOrEqual(90);
+    }
   });
 });
 

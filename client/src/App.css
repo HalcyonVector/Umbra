@@ -33,25 +33,60 @@
   font-variant-numeric: tabular-nums;
 }
 
-@keyframes pulse-glow {
-  0%, 100% { opacity: 0.9; r: 3.4; }
-  50% { opacity: 0.35; r: 6.5; }
-}
 
 @keyframes hint-in {
   from { opacity: 0; transform: translateY(-4px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes iss-pulse {
+  from { transform: scale(1); opacity: 0.85; }
+  to { transform: scale(2.6); opacity: 0; }
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ---------- Session milestone toasts ---------- */
+
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+  max-width: 280px;
+}
+
+.toast {
+  background: var(--panel-raised);
+  border: 1px solid var(--line-strong);
+  border-left: 2px solid var(--accent);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 10px 14px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(111, 224, 201, 0.08);
+  animation: toast-in 0.25s ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .map-iss-halo { animation: none !important; }
   .onboarding-banner { animation: none !important; }
+  .iss-halo { animation: none !important; }
+  .toast { animation: none !important; }
 }
 
 /* ---------- Shell ---------- */
 
 .umbra-shell {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   background: var(--ground);
@@ -78,6 +113,15 @@
   font-size: 15px;
   letter-spacing: 0.32em;
   color: var(--text-primary);
+}
+
+.topbar-signal {
+  margin-left: 10px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--day);
 }
 
 .topbar-clock {
@@ -143,11 +187,23 @@ button.ghost:hover {
 .body-grid {
   display: grid;
   grid-template-columns: 216px 1fr 300px;
+  /* Without an explicit row track, an implicit grid row sizes to its
+     tallest item's *content* height (auto), not the space actually
+     available — so the rail/dock's telemetry lists silently pushed the
+     whole page taller than the viewport instead of scrolling internally.
+     minmax(0, 1fr) forces the row to the flex-allocated space instead. */
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
 }
 
 @media (max-width: 860px) {
+  .umbra-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+  }
+
   .body-grid {
     grid-template-columns: 1fr;
     grid-template-rows: auto 320px auto;
@@ -159,11 +215,21 @@ button.ghost:hover {
 .rail {
   background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 22px 18px;
+  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   overflow-y: auto;
+  min-height: 0;
+}
+
+.hud-card.rail-card {
+  padding: 12px 14px;
+}
+
+.hud-card.rail-card--hero {
+  border-color: var(--accent-dim);
+  background: radial-gradient(130% 110% at 50% -15%, rgba(111, 224, 201, 0.1), var(--panel-raised) 65%);
 }
 
 .orbit-dial {
@@ -236,20 +302,38 @@ button.ghost:hover {
   color: var(--text-muted);
 }
 
+.orbit-lap-label {
+  text-align: center;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
 .rail-section-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
   font-family: var(--font-mono);
   font-size: 9.5px;
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.14em;
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-  margin-bottom: 2px;
+  margin-bottom: 6px;
 }
 
-.rail-section-label:first-of-type {
-  border-top: none;
-  padding-top: 0;
+.rail-section-count {
+  color: var(--accent);
+  font-size: 11px;
+  letter-spacing: 0;
+}
+
+.rail-fun-fact {
+  margin: 2px 0 8px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .telemetry-row {
@@ -324,6 +408,31 @@ button.ghost:hover {
   font-size: 12px;
 }
 
+.country-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 0 10px;
+}
+
+.country-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--panel-raised);
+  border: 1px solid var(--line);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  font-size: 11px;
+  border-radius: 3px;
+  line-height: 1;
+}
+
+.country-chip svg {
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
 .rail-foot {
   margin-top: auto;
   font-size: 10px;
@@ -338,57 +447,80 @@ button.ghost:hover {
 .map-viewport {
   position: relative;
   overflow: hidden;
-  cursor: grab;
-  touch-action: pan-y;
+  min-height: 0;
   background: var(--ground);
 }
 
-.map-viewport--dragging {
-  cursor: grabbing;
+/* ---------- Leaflet dark-theme overrides ---------- */
+/* Leaflet's default chrome (zoom buttons, attribution) is styled for a
+   light basemap — restyled here to match the instrument-console palette
+   rather than looking like an unstyled third-party widget dropped in. */
+
+.leaflet-container {
+  background: var(--ground);
+  font-family: var(--font-body);
 }
 
-.map-reel {
-  display: flex;
-  width: 300%;
-  height: 100%;
-  will-change: transform;
+/* CARTO's dark tiles have their own neutral grey-blue cast, slightly off
+   from the app's own near-black warm-neutral chrome — a small filter pulls
+   the two closer together so the map reads as part of the same instrument
+   rather than a third-party widget dropped into a dark page. */
+.leaflet-tile-pane {
+  filter: saturate(0.85) brightness(0.92) contrast(1.05);
 }
 
-.map-layer {
+.leaflet-control-zoom a {
+  background: var(--panel-raised);
+  border: 1px solid var(--line-strong) !important;
+  color: var(--text-primary);
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--panel);
+  color: var(--accent);
+}
+
+.leaflet-control-attribution {
+  background: rgba(13, 16, 21, 0.75);
+  color: var(--text-muted);
+  font-size: 9.5px;
+}
+
+.leaflet-control-attribution a {
+  color: var(--text-secondary);
+}
+
+/* ---------- ISS marker (radar-style pulsing dot) ---------- */
+
+.iss-marker-icon {
   position: relative;
-  flex: 0 0 33.3334%;
-  width: 33.3334%;
-  height: 100%;
-  background: radial-gradient(120% 90% at 50% 8%, #131a26, var(--ground) 68%);
-}
-
-.map-svg {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  display: block;
-}
-
-.map-night-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  /* object-fit: cover scales the canvas uniformly (preserving its aspect
-     ratio) to fill the panel, matching the SVG's preserveAspectRatio="...
-     slice" behavior. Without this, the canvas stretched non-uniformly —
-     a different horizontal vs vertical scale factor than the SVG — so the
-     night shading silently drifted out of alignment with the land under it. */
-  object-fit: cover;
+  width: 22px;
+  height: 22px;
   pointer-events: none;
-  filter: blur(5px);
 }
 
-.map-iss-halo {
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: pulse-glow 2.6s ease-in-out infinite;
+.iss-dot {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  box-shadow: 0 0 6px 1px rgba(238, 241, 244, 0.6);
+}
+
+.iss-halo {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 8px;
+  height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text-primary);
+  animation: iss-pulse 2.2s ease-out infinite;
 }
 
 /* ---------- Corner brackets (map + sky-plot) ---------- */
@@ -411,11 +543,17 @@ button.ghost:hover {
 .dock {
   background: var(--panel);
   border-left: 1px solid var(--line);
-  padding: 22px 18px;
+  padding: 18px 14px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 12px;
   overflow-y: auto;
+  min-height: 0;
+}
+
+.hud-card.dock-card--hero {
+  border-color: var(--accent-dim);
+  background: radial-gradient(130% 110% at 50% -15%, rgba(111, 224, 201, 0.1), var(--panel-raised) 65%);
 }
 
 .dock-heading {
@@ -428,6 +566,76 @@ button.ghost:hover {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+/* ---------- Collapsible dock sections ---------- */
+/* Native <details>/<summary>: click-to-expand, keyboard-accessible, no JS
+   state needed. Everything past the always-visible next-pass summary lives
+   in one of these, so the dock is never one long forced-open scroll. */
+
+.dock-heading--clickable {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.dock-heading--clickable::-webkit-details-marker {
+  display: none;
+}
+
+.dock-heading--clickable:hover {
+  color: var(--text-secondary);
+}
+
+.details-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+}
+
+details[open] > .dock-heading--clickable .details-chevron {
+  transform: rotate(180deg);
+}
+
+.dock-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.dock-stat + .dock-stat {
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.dock-stat svg {
+  flex-shrink: 0;
+  color: var(--accent);
+}
+
+.golden-window {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  border-left: 2px solid var(--accent);
+}
+
+.golden-window svg {
+  flex-shrink: 0;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.golden-window b {
+  color: var(--text-primary);
 }
 
 .next-pass {
@@ -510,15 +718,6 @@ button.ghost:hover {
   margin: 8px 0 0;
 }
 
-.badge {
-  font-size: 9.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  background: var(--panel);
-  border: 1px solid var(--line-strong);
-  color: var(--text-secondary);
-  padding: 2px 6px;
-}
 
 .btn-console {
   display: flex;
@@ -674,97 +873,6 @@ button.ghost:hover {
   font-family: var(--font-mono);
   color: var(--text-secondary);
   font-size: 11.5px;
-}
-
-/* ---------- Saved locations ---------- */
-
-.preset-save-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.preset-save-row input {
-  flex: 1;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  padding: 8px 10px;
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.preset-save-row:focus-within {
-  outline: 1px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.preset-save-row button, .share-link-btn {
-  background: var(--panel);
-  border: 1px solid var(--line-strong);
-  color: var(--text-primary);
-  padding: 8px 12px;
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.preset-save-row button:disabled, .share-link-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.share-link-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-
-.share-link-btn--copied {
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.presets-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.presets-list li {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-primary);
-}
-
-.presets-list li span {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.preset-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: transparent;
-  border: 1px solid var(--line);
-  color: var(--text-primary);
-  padding: 5px 8px;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.preset-action-btn--danger:hover {
-  border-color: var(--day);
-  color: var(--day);
 }
 
 .dock-footnote {

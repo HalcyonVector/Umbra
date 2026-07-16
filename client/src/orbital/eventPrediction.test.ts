@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { predictTerminatorCrossings, predictVisiblePasses } from './eventPrediction';
+import { predictTerminatorCrossings, predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow } from './eventPrediction';
 import { deriveOrbitalElements, propagateSubSatellitePoint, ISS_INCLINATION_DEG, type OrbitalElements } from './groundTrackPropagator';
-import { subsolarPoint, isDaylight } from './solarTerminator';
+import { subsolarPoint, isDaylight, solarElevationDeg } from './solarTerminator';
+import { satelliteElevationDeg } from './visibility';
 import { destinationPoint, EARTH_RADIUS_KM } from './greatCircle';
 import { ISS_MEAN_ALTITUDE_KM, ISS_MEAN_PERIOD_MIN } from './orbitalMechanics';
 
@@ -102,5 +103,95 @@ describe('predictVisiblePasses', () => {
     const passes = predictVisiblePasses(elements, observer.lat, observer.lon, ISS_MEAN_ALTITUDE_KM, EPOCH, 2 * 60_000);
     // A single fast-moving pass lasting a couple of minutes should not fragment into multiple entries.
     expect(passes.length).toBeLessThanOrEqual(1);
+  });
+});
+
+describe('predictLocalTwilightTransition', () => {
+  it('finds a transition to dark for an observer currently in daylight near the terminator', () => {
+    const date = new Date(EPOCH);
+    const sub = subsolarPoint(date);
+    // Just inside the daylight side of the terminator — should cross into dark soon.
+    const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM - 200);
+    expect(solarElevationDeg(observer.lat, observer.lon, date)).toBeGreaterThan(-6);
+
+    const transition = predictLocalTwilightTransition(observer.lat, observer.lon, EPOCH, 24 * 60 * 60_000, 6, 60_000);
+    expect(transition).not.toBeNull();
+    expect(transition!.becomingDark).toBe(true);
+    expect(transition!.atMs).toBeGreaterThan(EPOCH);
+  });
+
+  it('finds a transition to light for an observer currently in the dark near the terminator', () => {
+    const date = new Date(EPOCH);
+    const sub = subsolarPoint(date);
+    const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 700);
+    expect(solarElevationDeg(observer.lat, observer.lon, date)).toBeLessThan(-6);
+
+    const transition = predictLocalTwilightTransition(observer.lat, observer.lon, EPOCH, 24 * 60 * 60_000, 6, 60_000);
+    expect(transition).not.toBeNull();
+    expect(transition!.becomingDark).toBe(false);
+  });
+
+  it('the returned crossing point genuinely straddles the threshold', () => {
+    const date = new Date(EPOCH);
+    const sub = subsolarPoint(date);
+    const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM - 200);
+    const transition = predictLocalTwilightTransition(observer.lat, observer.lon, EPOCH, 24 * 60 * 60_000, 6, 60_000)!;
+
+    const before = solarElevationDeg(observer.lat, observer.lon, new Date(transition.atMs - 2000));
+    const after = solarElevationDeg(observer.lat, observer.lon, new Date(transition.atMs + 2000));
+    expect(before).toBeGreaterThan(-6);
+    expect(after).toBeLessThan(-6);
+  });
+
+  it('returns null when no transition occurs within the window (e.g. a polar night/day observer)', () => {
+    // Near the winter pole at the solstice-ish date used elsewhere would be
+    // extreme; simplest deterministic null case is a tiny window too short
+    // for any transition to occur.
+    const transition = predictLocalTwilightTransition(0, 0, EPOCH, 60_000, 6, 60_000);
+    expect(transition).toBeNull();
+  });
+});
+
+describe('findBestViewingSpotNow', () => {
+  const date = new Date(EPOCH);
+  const sub = subsolarPoint(date);
+  // A sub-satellite point 300km into the daylight side of the terminator —
+  // sunlit, but close enough that part of a 1200km ring around it reaches
+  // well past the terminator into genuine darkness.
+  const issSub = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM - 300);
+
+  it('returns null when the ISS itself is not currently sunlit (deep in Earth\'s shadow)', () => {
+    const antipode = { lat: -sub.lat, lon: sub.lon + 180 > 180 ? sub.lon - 180 : sub.lon + 180 };
+    expect(isDaylight(antipode.lat, antipode.lon, date)).toBe(false);
+    expect(findBestViewingSpotNow(antipode.lat, antipode.lon, ISS_MEAN_ALTITUDE_KM, date)).toBeNull();
+  });
+
+  it('when it finds a spot, that spot genuinely satisfies all three real conditions', () => {
+    expect(isDaylight(issSub.lat, issSub.lon, date)).toBe(true);
+    const spot = findBestViewingSpotNow(issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM, date);
+    expect(spot).not.toBeNull();
+    expect(spot!.solarElevationDeg).toBeLessThanOrEqual(-6);
+    expect(spot!.satelliteElevationDeg).toBeGreaterThanOrEqual(10);
+
+    // Recompute directly to confirm the reported values aren't fabricated.
+    const recomputedSatElevation = satelliteElevationDeg(spot!.lat, spot!.lon, issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM);
+    expect(recomputedSatElevation).toBeCloseTo(spot!.satelliteElevationDeg, 6);
+    const recomputedSunElevation = solarElevationDeg(spot!.lat, spot!.lon, date);
+    expect(recomputedSunElevation).toBeCloseTo(spot!.solarElevationDeg, 6);
+  });
+
+  it('picks the darkest qualifying candidate, not just the first one found', () => {
+    const spot = findBestViewingSpotNow(issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM, date);
+    expect(spot).not.toBeNull();
+    // No other candidate on the same ring should be darker and still qualify.
+    for (let i = 0; i < 24; i++) {
+      const bearing = (360 / 24) * i;
+      const candidate = destinationPoint(issSub.lat, issSub.lon, bearing, 1200);
+      const sunElevation = solarElevationDeg(candidate.lat, candidate.lon, date);
+      const satElevation = satelliteElevationDeg(candidate.lat, candidate.lon, issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM);
+      if (sunElevation <= -6 && satElevation >= 10) {
+        expect(sunElevation).toBeGreaterThanOrEqual(spot!.solarElevationDeg);
+      }
+    }
   });
 });

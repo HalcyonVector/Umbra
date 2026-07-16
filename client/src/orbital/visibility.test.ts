@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { satelliteElevationDeg, satelliteAzimuthDeg, evaluateVisibility } from './visibility';
+import { satelliteElevationDeg, satelliteAzimuthDeg, evaluateVisibility, slantRangeKm } from './visibility';
 import { subsolarPoint, isDaylight, solarElevationDeg } from './solarTerminator';
 import { destinationPoint, EARTH_RADIUS_KM, toDegrees } from './greatCircle';
 import { ISS_MEAN_ALTITUDE_KM } from './orbitalMechanics';
@@ -29,6 +29,29 @@ describe('satelliteElevationDeg', () => {
   it('the horizon distance is in the real ballpark for the ISS (roughly 2000-2400km)', () => {
     expect(ISS_HORIZON_DISTANCE_KM).toBeGreaterThan(2000);
     expect(ISS_HORIZON_DISTANCE_KM).toBeLessThan(2400);
+  });
+});
+
+describe('slantRangeKm', () => {
+  it('equals exactly the altitude when the satellite is directly overhead', () => {
+    expect(slantRangeKm(10, 20, 10, 20, ISS_MEAN_ALTITUDE_KM)).toBeCloseTo(ISS_MEAN_ALTITUDE_KM, 3);
+  });
+
+  it('is greater than the altitude once the satellite is not directly overhead', () => {
+    const observer = { lat: 0, lon: 0 };
+    const sub = destinationPoint(observer.lat, observer.lon, 90, 500);
+    expect(slantRangeKm(observer.lat, observer.lon, sub.lat, sub.lon, ISS_MEAN_ALTITUDE_KM)).toBeGreaterThan(ISS_MEAN_ALTITUDE_KM);
+  });
+
+  it('grows monotonically as ground distance grows (up to the horizon)', () => {
+    const observer = { lat: 0, lon: 0 };
+    let prev = 0;
+    for (let d = 0; d <= ISS_HORIZON_DISTANCE_KM; d += 200) {
+      const sub = destinationPoint(observer.lat, observer.lon, 90, d);
+      const range = slantRangeKm(observer.lat, observer.lon, sub.lat, sub.lon, ISS_MEAN_ALTITUDE_KM);
+      expect(range).toBeGreaterThan(prev);
+      prev = range;
+    }
   });
 });
 

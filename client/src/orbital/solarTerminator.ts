@@ -62,6 +62,28 @@ export function isDaylight(lat: number, lon: number, date: Date): boolean {
 }
 
 /**
+ * The latitude of the day/night boundary at a given longitude, at a given
+ * instant — derived analytically from spherical trig, not sampled on a grid:
+ * a point (lat, lon) sits exactly on the terminator when solar elevation is
+ * 0, i.e. sin(lat)sin(decl) + cos(lat)cos(decl)cos(H) = 0, which rearranges
+ * to tan(lat) = -cos(H) / tan(decl), where H is the hour angle (the point's
+ * longitude offset from the subsolar meridian). Near an equinox (decl ~ 0)
+ * the terminator degenerates into a meridian pair rather than a function of
+ * longitude — this saturates toward +-90 in that case (still a visually
+ * correct near-polar curve) instead of dividing by zero.
+ */
+export function terminatorLatitudeDeg(lon: number, date: Date): number {
+  const sub = subsolarPoint(date);
+  const decl = solarDeclinationDeg(date);
+  const hourAngle = toRadians(normalizeDeg180(lon - sub.lon));
+  const tanDecl = Math.tan(toRadians(decl));
+  if (Math.abs(tanDecl) < 1e-6) {
+    return Math.cos(hourAngle) >= 0 ? -90 : 90;
+  }
+  return (Math.atan(-Math.cos(hourAngle) / tanDecl) * 180) / Math.PI;
+}
+
+/**
  * A continuous 0..1 "how close to the terminator right now" value: 1 exactly
  * on the day/night line (elevation 0), fading to 0 once solar elevation is
  * at least `bandDeg` away from zero in either direction. Used to shade the

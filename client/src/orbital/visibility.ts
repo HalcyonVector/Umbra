@@ -24,6 +24,22 @@ export function satelliteElevationDeg(observerLat: number, observerLon: number, 
 }
 
 /**
+ * The true straight-line (3D slant range) distance in km between an
+ * observer on Earth's surface and the satellite itself — not the ground
+ * distance to the sub-satellite point. Standard law-of-cosines triangle: the
+ * observer sits at radius Re from Earth's center, the satellite at
+ * Re+altitudeKm, separated by the same central angle `gamma` used for the
+ * elevation-angle formula above.
+ */
+export function slantRangeKm(observerLat: number, observerLon: number, subLat: number, subLon: number, altitudeKm: number): number {
+  const groundDistanceKm = haversineDistanceKm(observerLat, observerLon, subLat, subLon);
+  const gamma = groundDistanceKm / EARTH_RADIUS_KM;
+  const satelliteRadiusKm = EARTH_RADIUS_KM + altitudeKm;
+  const squared = EARTH_RADIUS_KM ** 2 + satelliteRadiusKm ** 2 - 2 * EARTH_RADIUS_KM * satelliteRadiusKm * Math.cos(gamma);
+  return Math.sqrt(Math.max(0, squared));
+}
+
+/**
  * The compass bearing (deg, 0=N/90=E/180=S/270=W) from an observer toward
  * the satellite's sub-point — what direction to look. This uses the
  * great-circle bearing to the sub-satellite point rather than a full

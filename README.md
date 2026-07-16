@@ -13,9 +13,9 @@ This project is for personal and educational use. It is **not a spaceflight-trac
 ### Living Cartography
 
 - The ISS's real ground track **persists in your browser across sessions** (`lib/trailStore.ts`) — the longer you've had Umbra open (or come back to it), the more of the real interlocking weave pattern the map draws, capped at 24 hours / 4,000 points so it can't grow unbounded.
-- A **live day/night shading raster**, independently sampled from solar-elevation geometry at every cell of a coarse lat/lon grid — not an approximated polygon, so it's correct straight through the poles and the antimeridian.
+- A **live day/night terminator overlay**, traced from the actual analytic day/night boundary (solved per longitude from solar declination — see `orbital/solarTerminator.ts`), not an approximated grid.
 - A **dashed preview of where the ISS is headed next** (the following 3 hours), traced by the same orbital propagator that powers the predictions — past and future, both real math, rendered distinctly.
-- **Draggable** — click and drag left or right to look around the world; the map is three tiled copies panned with a wrapped pixel offset, so it scrolls seamlessly with no edge or seam.
+- **A real basemap** — Leaflet with CARTO's free "Dark Matter" tiles (built on OpenStreetMap data): actual coastlines, borders, and place names, with native pan and zoom rather than a hand-rolled projection.
 
 ### A Real Orbital Propagator, Derived From One Fix
 
@@ -34,9 +34,14 @@ A real visibility calculation (`orbital/visibility.ts`), not a gimmick: the ISS 
 
 Live-updating altitude, ground speed, derived orbital velocity, an orbit-progress ring showing real position within the current ~92.68-minute orbit, current crew roster, and a running tally of sunrises/sunsets detected this session — each one fired the instant the continuously-recomputed solar geometry says it actually happened, not just reported after the fact by a network poll.
 
-### Saved Locations & Sharing
+### Session Stats
 
-Named viewing locations (home, a family member's address, wherever) save to the backend with a `localStorage` fallback and an honest "offline · saved locally" badge when the backend's unreachable. A location plus your elevation threshold encode into a shareable `?watch=` link.
+Four running totals, all derived from data the app already computes rather than a new API or hand-maintained list, reset each time the tab reloads (framed as "this session," not a permanent record):
+
+- **Countries overflown** — a running list built from the same offline country-polygon lookup (`orbital/countryLookup.ts`) that drives the current-position readout.
+- **Orbit lap counter** — increments the instant the orbit-progress dial wraps back to 0%, detected off the same continuously-ticking phase value the dial itself renders.
+- **Closest approach** — the nearest true 3D slant-range distance (not just ground distance — `orbital/visibility.ts`'s `slantRangeKm`) the ISS has come to your set location this session.
+- **Session odometer** — real ground-track distance accumulated between consecutive live fixes, with a "% of the way around Earth" readout alongside it.
 
 ### PWA
 
@@ -59,7 +64,7 @@ Top-level `ErrorBoundary`, disambiguated `aria-label`s throughout, a responsive 
 | Layer | Choice |
 | --- | --- |
 | Frontend | React 18, TypeScript, Vite |
-| Cartography | `world-atlas` (bundled TopoJSON land + country borders) + `topojson-client` |
+| Cartography | Leaflet + CARTO Dark Matter tiles (free, no API key) for the live map; `world-atlas` + `topojson-client` for offline country-border lookup |
 | Type | Archivo (display), IBM Plex Sans (UI), IBM Plex Mono (all telemetry, tabular numerals) |
 | Backend | Node.js, Express |
 | Testing | Vitest (+ Supertest for the API) |
@@ -99,7 +104,7 @@ umbra/
 ├── client/
 │   └── src/
 │       ├── orbital/          # pure orbital-mechanics/solar-geometry/propagator/visibility math + tests
-│       ├── map/               # Mercator projection, trail paths, night-mask grid + tests
+│       ├── map/               # sky-plot (azimuth/elevation) projection + tests — the world map itself is Leaflet
 │       ├── inputs/            # useIssFeed, useCrewFeed, useWakeLock
 │       ├── lib/                # clipboard, formatTime, localSettings, presetsStore, shareLink, trailStore
 │       └── components/         # MapScene, TelemetryRail, PredictorDock, SkyPlot, TopBar, ...
@@ -115,9 +120,6 @@ umbra/
 | --- | --- | --- |
 | GET | `/api/iss` | Current ISS position (cached ~4s) |
 | GET | `/api/astros` | Current space-station crew census (cached ~60s) |
-| GET | `/api/presets` | List saved observer locations |
-| POST | `/api/presets` | Save/overwrite a location (`{ name, params: { lat, lon } }`) |
-| DELETE | `/api/presets/:name` | Delete a saved location |
 | GET | `/api/health` | Liveness check |
 
 ## Configuration
@@ -125,7 +127,6 @@ umbra/
 | Env var | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `3003` | Express server port |
-| `PRESETS_DATA_FILE` | `server/data/presets.json` | Overridable path for the saved-locations store (used by tests) |
 
 ## Architecture
 
@@ -133,7 +134,7 @@ umbra/
 Open Notify (iss-now.json, astros.json)
         │  (cached proxy, 4s / 60s TTL)
         ▼
-   Express server ──/api/iss, /api/astros, /api/presets──▶ React client
+   Express server ────/api/iss, /api/astros────▶ React client
                                                                  │
                           useIssFeed / useCrewFeed (poll)        │
                                                                  ▼
@@ -164,12 +165,12 @@ Every pure function in `orbital/`, `map/`, and `lib/` has a matching Vitest suit
 - **Orbital velocity is derived**, scaled from ground-track speed by the ratio of orbital to Earth radius; this doesn't separately correct for Earth's own rotation (~0.46km/s at the equator, small next to the ISS's ~7.66km/s).
 - **The equation-of-time and solar-declination formulas are low-order approximations** (NOAA's simplified forms), accurate to roughly a degree — not observatory-grade ephemeris, but plenty for a twilight/visibility threshold.
 - **The country lookup is coarse and antimeridian-naive**, using `world-atlas`'s 110m-resolution borders without special-casing countries whose bounding box wraps the ±180° seam.
-- **The night-mask shading is a sampled raster** (a 120×60 grid, independently solar-elevation-tested per cell), giving a soft/blocky edge rather than a mathematically exact terminator curve — a deliberate trade for robustness across the poles and the antimeridian.
-- **The map is cropped to ±78° latitude.** Mercator projection diverges to infinity at the poles, so something has to be clamped; 78° comfortably includes every populated landmass (and the ISS never exceeds ±51.6°) at the cost of never showing high Arctic/Antarctic territory.
+- **The night-mask shading is a polygon along the analytically-solved terminator curve** (solved per longitude sample from solar declination, not a sampled grid), rendered as a Leaflet overlay — it does not currently account for atmospheric refraction or elevation, so it can be off by a small margin right at the edge.
+- **The map is a standard Leaflet + OpenStreetMap/CARTO tile basemap**, not a from-scratch projection — this is a deliberate trade for correctness and familiarity (real coastlines, borders, and place names, native pan/zoom) over building custom cartography.
 - **"Everyone in space" isn't ISS-only.** `astros.json` includes any currently-occupied station (historically also Tiangong).
 - **No two orbital elements are ever cross-validated against each other** — each derivation trusts its most recent 2-fix pair; a single corrupted-but-plausible pair of Open Notify samples could seed a bad prediction for a few minutes until the next fix corrects it.
 - **The PWA icons aren't maskable-safe.** Tagged `purpose: "any"`, not `"maskable"`.
-- **The draggable map's three tiled world copies each redraw their own night mask independently** — three times the (still trivial) fillRect work rather than one shared canvas, a simplicity-over-micro-optimization tradeoff.
+- **The map's tile basemap requires network access to CARTO's tile CDN.** Unlike the rest of the app (which degrades gracefully when Open Notify is unreachable), the basemap tiles themselves have no offline fallback.
 
 ## Suggested Future Features
 

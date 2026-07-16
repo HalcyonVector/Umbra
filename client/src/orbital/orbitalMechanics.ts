@@ -68,3 +68,15 @@ export function orbitalPhase(atMs: number, periodMinutes: number = ISS_MEAN_PERI
   const wrapped = ((atMs % periodMs) + periodMs) % periodMs;
   return wrapped / periodMs;
 }
+
+/**
+ * True exactly when consecutive phase readings show the orbit-progress dial
+ * has wrapped back to 0% — i.e. a full lap completed — rather than just
+ * ticking forward normally. Guards against false positives from a
+ * *backward* phase jump (e.g. the display position briefly re-deriving from
+ * a fresh live fix) by requiring the previous reading to have been near the
+ * end of the cycle, not just numerically greater than the new one.
+ */
+export function didOrbitWrap(prevPhase: number, currPhase: number, nearEndThreshold: number = 0.9, nearStartThreshold: number = 0.1): boolean {
+  return prevPhase >= nearEndThreshold && currPhase <= nearStartThreshold;
+}

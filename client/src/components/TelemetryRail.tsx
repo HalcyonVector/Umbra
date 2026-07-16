@@ -1,5 +1,7 @@
 import type { CrewMember, OrbitalTelemetry, SolarState } from '../types';
 import { ISS_MEAN_PERIOD_MIN } from '../orbital/orbitalMechanics';
+import { EARTH_RADIUS_KM } from '../orbital/greatCircle';
+import { speedAsJetMultiple, altitudeAsEverestMultiple } from '../lib/scaleComparisons';
 
 interface TelemetryRailProps {
   telemetry: OrbitalTelemetry;
@@ -7,7 +9,12 @@ interface TelemetryRailProps {
   crew: CrewMember[];
   sunriseCount: number;
   sunsetCount: number;
+  countriesOverflown: string[];
+  orbitLapCount: number;
+  totalDistanceKm: number;
 }
+
+const EARTH_CIRCUMFERENCE_KM = 2 * Math.PI * EARTH_RADIUS_KM;
 
 const RING_RADIUS = 46;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
@@ -66,6 +73,25 @@ function OrbitalSpeedIcon() {
   );
 }
 
+function GlobeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.2" />
+      <path d="M1.8 8h12.4M8 1.8c2.2 1.8 2.2 10.6 0 12.4C5.8 12.4 5.8 3.6 8 1.8Z" />
+    </svg>
+  );
+}
+
+function OdometerIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2 12.5A6 6 0 1 1 14 12.5" />
+      <path d="M8 8 5.6 5.6" />
+      <circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function fmt(n: number, digits = 1) {
   return n.toFixed(digits);
 }
@@ -76,14 +102,18 @@ function fmt(n: number, digits = 1) {
  * numbers, and crew is encoded as both a count and a row of dots — a
  * literal visual census, one mark per person currently in space.
  */
-export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunsetCount }: TelemetryRailProps) {
+export function TelemetryRail({
+  telemetry, solarState, crew, sunriseCount, sunsetCount,
+  countriesOverflown, orbitLapCount, totalDistanceKm,
+}: TelemetryRailProps) {
   const phase = Math.max(0, Math.min(1, telemetry.orbitalPhase));
   const dashOffset = RING_CIRCUMFERENCE * (1 - phase);
   const remainingMin = Math.max(0, Math.round((1 - phase) * ISS_MEAN_PERIOD_MIN));
+  const earthTrips = totalDistanceKm / EARTH_CIRCUMFERENCE_KM;
 
   return (
     <aside className="rail">
-      <div>
+      <div className="hud-card rail-card rail-card--hero">
         <div className="orbit-dial">
           <svg viewBox="0 0 108 108" width="108" height="108">
             <circle className="orbit-dial-track" cx="54" cy="54" r={RING_RADIUS} fill="none" strokeWidth="2.5" />
@@ -101,6 +131,7 @@ export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunse
             <span className="orbit-dial-rem">{remainingMin}M LEFT</span>
           </div>
         </div>
+        <div className="orbit-lap-label num">Orbit {orbitLapCount + 1} this session</div>
         <div className="state-pill">
           <StateIcon state={solarState} />
           {STATE_LABEL[solarState]}
@@ -112,7 +143,7 @@ export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunse
         </div>
       </div>
 
-      <div>
+      <div className="hud-card rail-card">
         <div className="rail-section-label">Telemetry</div>
         <div className="telemetry-row">
           <span className="telemetry-icon"><AltitudeIcon /></span>
@@ -121,6 +152,8 @@ export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunse
             <span className="rail-value">{telemetry.altitudeKm.toFixed(0)}<small>km est.</small></span>
           </span>
         </div>
+        <p className="rail-fun-fact">{fmt(altitudeAsEverestMultiple(telemetry.altitudeKm), 0)}× Mount Everest</p>
+
         <div className="telemetry-row">
           <span className="telemetry-icon"><SpeedIcon /></span>
           <span>
@@ -138,7 +171,12 @@ export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunse
             <span className="rail-value">{telemetry.orbitalSpeedKmS != null ? fmt(telemetry.orbitalSpeedKmS, 2) : '—'}<small>km/s</small></span>
           </span>
         </div>
+        {telemetry.orbitalSpeedKmS != null && (
+          <p className="rail-fun-fact">{fmt(speedAsJetMultiple(telemetry.orbitalSpeedKmS), 0)}× a commercial jet</p>
+        )}
+      </div>
 
+      <div className="hud-card rail-card">
         <div className="rail-section-label">Crew aboard</div>
         <div className="crew-row">
           {telemetry.crewCount > 0 ? (
@@ -156,7 +194,44 @@ export function TelemetryRail({ telemetry, solarState, crew, sunriseCount, sunse
         </div>
       </div>
 
-      <div className="rail-foot">Position via Open Notify. Altitude, speed, and orbit shape are derived, not reported.</div>
+      <div className="hud-card rail-card">
+        <div className="rail-section-label">Session odometer</div>
+        <div className="telemetry-row">
+          <span className="telemetry-icon"><OdometerIcon /></span>
+          <span>
+            <span className="rail-label">Distance flown</span>
+            <span className="rail-value">{Math.round(totalDistanceKm).toLocaleString()}<small>km</small></span>
+          </span>
+        </div>
+        {earthTrips > 0.001 && (
+          <p className="rail-fun-fact">
+            {earthTrips < 1
+              ? `${Math.round(earthTrips * 100)}% of the way around Earth`
+              : `${fmt(earthTrips, 2)}× around Earth`}
+          </p>
+        )}
+      </div>
+
+      <div className="hud-card rail-card">
+        <div className="rail-section-label">
+          Countries overflown
+          <span className="rail-section-count num">{countriesOverflown.length}</span>
+        </div>
+        {countriesOverflown.length === 0 ? (
+          <p className="hud-note">None yet this session.</p>
+        ) : (
+          <div className="country-chips">
+            {countriesOverflown.map((name) => (
+              <span className="country-chip" key={name}>
+                <GlobeIcon />
+                {name}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rail-foot">Position via Open Notify, with an automatic fallback feed if it's down. Altitude, speed, and orbit shape are derived, not reported.</div>
     </aside>
   );
 }

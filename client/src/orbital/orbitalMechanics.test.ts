@@ -5,6 +5,7 @@ import {
   periodFromAltitudeMin,
   groundSpeedToOrbitalSpeedKmS,
   orbitalPhase,
+  didOrbitWrap,
   ISS_MEAN_ALTITUDE_KM,
   ISS_MEAN_PERIOD_MIN,
 } from './orbitalMechanics';
@@ -68,5 +69,27 @@ describe('orbitalPhase', () => {
       expect(phase).toBeGreaterThanOrEqual(0);
       expect(phase).toBeLessThan(1);
     }
+  });
+});
+
+describe('didOrbitWrap', () => {
+  it('is true when phase drops from near 1 to near 0', () => {
+    expect(didOrbitWrap(0.98, 0.02)).toBe(true);
+    expect(didOrbitWrap(0.91, 0.0)).toBe(true);
+  });
+
+  it('is false for ordinary forward progress within one lap', () => {
+    expect(didOrbitWrap(0.2, 0.4)).toBe(false);
+    expect(didOrbitWrap(0.5, 0.51)).toBe(false);
+  });
+
+  it('is false when the previous phase was not actually near the end of the cycle', () => {
+    // A backward jump (e.g. re-deriving from a fresh fix) shouldn't count as a lap.
+    expect(didOrbitWrap(0.5, 0.02)).toBe(false);
+  });
+
+  it('respects custom thresholds', () => {
+    expect(didOrbitWrap(0.8, 0.15, 0.75, 0.2)).toBe(true);
+    expect(didOrbitWrap(0.7, 0.15, 0.75, 0.2)).toBe(false);
   });
 });

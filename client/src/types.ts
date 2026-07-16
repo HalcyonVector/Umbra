@@ -39,14 +39,3 @@ export interface OrbitalTelemetry {
   orbitalPhase: number; // 0..1 — progress through the current ~92.68-minute orbit
 }
 
-/** A saved observer location for the visibility predictor. */
-export interface LocationParams {
-  lat: number;
-  lon: number;
-}
-
-export interface LocationPreset {
-  name: string;
-  params: LocationParams;
-  savedAt: string;
-}

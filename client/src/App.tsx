@@ -6,15 +6,15 @@ import { useIssFeed } from './inputs/useIssFeed';
 import { useCrewFeed } from './inputs/useCrewFeed';
 import { useWakeLock } from './inputs/useWakeLock';
 import { solarElevationDeg } from './orbital/solarTerminator';
-import { ISS_MEAN_ALTITUDE_KM, orbitalPhase as fallbackOrbitalPhase, groundSpeedToOrbitalSpeedKmS } from './orbital/orbitalMechanics';
+import { ISS_MEAN_ALTITUDE_KM, orbitalPhase as fallbackOrbitalPhase, groundSpeedToOrbitalSpeedKmS, didOrbitWrap } from './orbital/orbitalMechanics';
 import { computeGroundSpeedKmh, computeBearingDeg, pruneTrail, type TrackPoint } from './orbital/groundTrack';
 import { findCountryAt, computeBBox, type CountryFeature, type CountryGeometry } from './orbital/countryLookup';
 import { deriveOrbitalElements, propagateSubSatellitePoint, orbitalPhaseAt, type OrbitalElements } from './orbital/groundTrackPropagator';
-import { predictTerminatorCrossings, predictVisiblePasses } from './orbital/eventPrediction';
+import { predictTerminatorCrossings, predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow } from './orbital/eventPrediction';
+import { slantRangeKm } from './orbital/visibility';
+import { haversineDistanceKm } from './orbital/greatCircle';
 import { loadTrail, saveTrail } from './lib/trailStore';
-import { listLocations, saveLocation, deleteLocation, type LocationSource } from './lib/presetsStore';
-import { buildShareUrl, readShareParamsFromLocation } from './lib/shareLink';
-import { copyToClipboard } from './lib/clipboard';
+import { crossedMilestones, DISTANCE_MILESTONES_KM, COUNTRY_MILESTONES, LAP_MILESTONES } from './lib/milestones';
 import {
   hasSeenOnboarding, loadStoredMinElevation, loadStoredObserver, markOnboardingSeen,
   saveStoredMinElevation, saveStoredObserver,
@@ -24,7 +24,8 @@ import { TopBar } from './components/TopBar';
 import { OnboardingHint } from './components/OnboardingHint';
 import { TelemetryRail } from './components/TelemetryRail';
 import { PredictorDock, type GeolocationStatus } from './components/PredictorDock';
-import type { LocationPreset, OrbitalTelemetry, SolarState } from './types';
+import { ToastStack, type ToastItem } from './components/ToastStack';
+import type { OrbitalTelemetry, SolarState } from './types';
 import './App.css';
 
 const TRAIL_RETENTION_MS = 24 * 60 * 60_000;
@@ -42,14 +43,14 @@ function resolveSolarState(isDaylight: boolean, elevationDeg: number): SolarStat
 export default function App() {
   const prevPositionRef = useRef<TrackPoint | null>(null);
   const prevDaylightRef = useRef<boolean | null>(null);
+  const prevOrbitalPhaseRef = useRef<number | null>(null);
+  const prevDistanceMilestoneRef = useRef(0);
+  const prevCountryMilestoneRef = useRef(0);
+  const prevLapMilestoneRef = useRef(0);
 
   const [observer, setObserverState] = useState<{ lat: number; lon: number } | null>(() => loadStoredObserver());
   const [minElevationDeg, setMinElevationDeg] = useState(() => loadStoredMinElevation(10));
   const [geolocationStatus, setGeolocationStatus] = useState<GeolocationStatus>('idle');
-  const [locations, setLocations] = useState<LocationPreset[]>([]);
-  const [locationsSource, setLocationsSource] = useState<LocationSource>('server');
-  const [locationName, setLocationName] = useState('');
-  const [linkCopied, setLinkCopied] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !hasSeenOnboarding());
   const [trail, setTrail] = useState<TrackPoint[]>(() => loadTrail());
   const [groundSpeedKmh, setGroundSpeedKmh] = useState<number | null>(null);
@@ -59,6 +60,23 @@ export default function App() {
   const [sunsetCount, setSunsetCount] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
+  // Session-only "novel feature" stats — all derived from data the app
+  // already computes, reset on page reload rather than persisted, since
+  // they're framed as "this session," not a permanent record.
+  const [countriesOverflown, setCountriesOverflown] = useState<string[]>([]);
+  const [orbitLapCount, setOrbitLapCount] = useState(0);
+  const [closestApproachKm, setClosestApproachKm] = useState<number | null>(null);
+  const [totalDistanceKm, setTotalDistanceKm] = useState(0);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+
+  const addToast = (message: string) => {
+    setToasts((t) => [...t, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, message }]);
+  };
+
+  const dismissToast = (id: string) => {
+    setToasts((t) => t.filter((x) => x.id !== id));
+  };
+
   const dismissOnboarding = () => {
     setShowOnboarding(false);
     markOnboardingSeen();
@@ -67,18 +85,6 @@ export default function App() {
   // Leave-it-open-and-watch is the whole point here, so the wake lock is unconditional.
   useWakeLock(true);
 
-  useEffect(() => {
-    const shared = readShareParamsFromLocation();
-    if (shared) {
-      const loc = { lat: shared.lat, lon: shared.lon };
-      setObserverState(loc);
-      saveStoredObserver(loc);
-      setMinElevationDeg(shared.minElevationDeg);
-      saveStoredMinElevation(shared.minElevationDeg);
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-  }, []);
-
   // Ticks once a second so solar elevation, orbit progress, and countdowns
   // all keep advancing smoothly between the ~5s ISS position polls.
   useEffect(() => {
@@ -86,7 +92,7 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const { position: livePosition } = useIssFeed();
+  const { position: livePosition, consecutiveFailures, lastFixMs } = useIssFeed();
   const { count: crewFeedCount, people } = useCrewFeed();
 
   // world-atlas ships pre-built TopoJSON country polygons (ISC-licensed) —
@@ -131,6 +137,10 @@ export default function App() {
       if (bearing !== null) {
         setOrbitalElements(deriveOrbitalElements(curr.lat, curr.lon, bearing, curr.timeMs));
       }
+      // Session odometer: real ground-track distance between consecutive
+      // fixes, not a scaled/derived speed — an honest, directly-measured
+      // running total for the whole time this tab's been open.
+      setTotalDistanceKm((d) => d + haversineDistanceKm(prev.lat, prev.lon, curr.lat, curr.lon));
     }
     prevPositionRef.current = curr;
     setTrail((t) => {
@@ -139,6 +149,22 @@ export default function App() {
       return next;
     });
   }, [livePosition]);
+
+  // If the live ISS feed never responds (Open Notify and its fallback both
+  // down), don't leave the map and telemetry blank forever — seed a one-time
+  // estimate from the last two points of the persisted ground track (see
+  // lib/trailStore.ts), so there's something to look at instead of an
+  // indefinite "waiting for telemetry" state. The moment a real fix arrives,
+  // the effect above overwrites this with live-derived orbital elements.
+  useEffect(() => {
+    if (orbitalElements || trail.length < 2) return;
+    const [a, b] = trail.slice(-2);
+    if (a.timeMs === b.timeMs) return;
+    const bearing = computeBearingDeg(a, b);
+    if (bearing === null) return;
+    setOrbitalElements(deriveOrbitalElements(b.lat, b.lon, bearing, b.timeMs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The smoothly-propagated "where is it right now" position, used for
   // display (map marker, dashboard readouts) — falls back to the last raw
@@ -196,6 +222,62 @@ export default function App() {
     else setSunsetCount((n) => n + 1);
   }, [telemetry.isDaylight]);
 
+  // Countries overflown this session — a running list, order of first sight.
+  useEffect(() => {
+    const country = telemetry.country;
+    if (!country) return;
+    setCountriesOverflown((prev) => (prev.includes(country) ? prev : [...prev, country]));
+  }, [telemetry.country]);
+
+  // Orbit lap counter: increments the instant the progress dial wraps back
+  // to 0%, detected off the same continuously-ticking phase value the dial
+  // itself renders (rather than a separate timer), so it's exact.
+  useEffect(() => {
+    const prevPhase = prevOrbitalPhaseRef.current;
+    prevOrbitalPhaseRef.current = telemetry.orbitalPhase;
+    if (prevPhase !== null && didOrbitWrap(prevPhase, telemetry.orbitalPhase)) {
+      setOrbitLapCount((n) => n + 1);
+    }
+  }, [telemetry.orbitalPhase]);
+
+  // Closest approach resets whenever the *observer location itself* changes
+  // (a new place to watch from starts a fresh record), not on every
+  // position tick.
+  useEffect(() => {
+    setClosestApproachKm(null);
+  }, [observer?.lat, observer?.lon]);
+
+  useEffect(() => {
+    if (!observer || !displayPosition) return;
+    const rangeKm = slantRangeKm(observer.lat, observer.lon, displayPosition.lat, displayPosition.lon, ISS_MEAN_ALTITUDE_KM);
+    setClosestApproachKm((prev) => (prev === null || rangeKm < prev ? rangeKm : prev));
+  }, [observer, displayPosition]);
+
+  // Session-milestone toasts: a moment of payoff for otherwise-passive
+  // stats, firing exactly once per threshold as each running total actually
+  // crosses it (see lib/milestones.ts) — never re-firing on re-render.
+  useEffect(() => {
+    const crossed = crossedMilestones(prevDistanceMilestoneRef.current, totalDistanceKm, DISTANCE_MILESTONES_KM);
+    crossed.forEach((m) => addToast(`${m.toLocaleString()} km flown this session`));
+    prevDistanceMilestoneRef.current = totalDistanceKm;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalDistanceKm]);
+
+  useEffect(() => {
+    const count = countriesOverflown.length;
+    const crossed = crossedMilestones(prevCountryMilestoneRef.current, count, COUNTRY_MILESTONES);
+    crossed.forEach((m) => addToast(`${m} ${m === 1 ? 'country' : 'countries'} overflown this session`));
+    prevCountryMilestoneRef.current = count;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countriesOverflown.length]);
+
+  useEffect(() => {
+    const crossed = crossedMilestones(prevLapMilestoneRef.current, orbitLapCount, LAP_MILESTONES);
+    crossed.forEach((m) => addToast(`Orbit ${m} complete`));
+    prevLapMilestoneRef.current = orbitLapCount;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orbitLapCount]);
+
   // Expensive multi-hour walks only re-run when the orbital elements
   // themselves change (roughly once per ~5-8s poll); filtering the results
   // down to "still upcoming" against the ticking clock is cheap.
@@ -223,12 +305,29 @@ export default function App() {
     return points;
   }, [orbitalElements]);
 
-  useEffect(() => {
-    listLocations().then(({ locations: loaded, source }) => {
-      setLocations(loaded);
-      setLocationsSource(source);
-    });
-  }, []);
+  // Both of these are cheap but not free (a 24-point ring scan; a bisected
+  // time-walk) and don't need sub-minute precision, so they're recomputed on
+  // the same minute cadence as the map's night-mask rather than every tick.
+  const minuteKey = Math.floor(nowMs / 60_000);
+
+  const localTwilightTransition = useMemo(
+    () => (observer ? predictLocalTwilightTransition(observer.lat, observer.lon, nowMs) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [observer?.lat, observer?.lon, minuteKey],
+  );
+
+  const goldenWindowSpot = useMemo(() => {
+    if (!orbitalElements) return null;
+    const minuteMs = minuteKey * 60_000;
+    const pos = propagateSubSatellitePoint(orbitalElements, minuteMs);
+    return findBestViewingSpotNow(pos.lat, pos.lon, ISS_MEAN_ALTITUDE_KM, new Date(minuteMs));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orbitalElements, minuteKey]);
+
+  const goldenWindowCountry = useMemo(
+    () => (goldenWindowSpot ? findCountryAt(goldenWindowSpot.lon, goldenWindowSpot.lat, countries) : null),
+    [goldenWindowSpot, countries],
+  );
 
   const handleUseMyLocation = () => {
     if (!('geolocation' in navigator)) {
@@ -260,46 +359,23 @@ export default function App() {
     saveStoredMinElevation(v);
   };
 
-  const handleSaveLocation = async () => {
-    const name = locationName.trim();
-    if (!name || !observer) return;
-    const { location, source } = await saveLocation(name, observer);
-    setLocations((prev) => [...prev.filter((l) => l.name !== name), location]);
-    setLocationsSource(source);
-    setLocationName('');
-  };
-
-  const handleLoadLocation = (name: string) => {
-    const loc = locations.find((l) => l.name === name);
-    if (loc) {
-      setObserverState(loc.params);
-      saveStoredObserver(loc.params);
-    }
-  };
-
-  const handleDeleteLocation = async (name: string) => {
-    const { source } = await deleteLocation(name);
-    setLocations((prev) => prev.filter((l) => l.name !== name));
-    setLocationsSource(source);
-  };
-
-  const handleCopyShareLink = async () => {
-    if (!observer) return;
-    const ok = await copyToClipboard(buildShareUrl({ lat: observer.lat, lon: observer.lon, minElevationDeg }));
-    if (ok) {
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
-    }
-  };
-
   return (
     <div className="umbra-shell">
-      <TopBar nowMs={nowMs} />
+      <TopBar nowMs={nowMs} consecutiveFailures={consecutiveFailures} lastFixMs={lastFixMs} />
 
       {showOnboarding && <OnboardingHint onDismiss={dismissOnboarding} />}
 
       <div className="body-grid">
-        <TelemetryRail telemetry={telemetry} solarState={solarState} crew={people} sunriseCount={sunriseCount} sunsetCount={sunsetCount} />
+        <TelemetryRail
+          telemetry={telemetry}
+          solarState={solarState}
+          crew={people}
+          sunriseCount={sunriseCount}
+          sunsetCount={sunsetCount}
+          countriesOverflown={countriesOverflown}
+          orbitLapCount={orbitLapCount}
+          totalDistanceKm={totalDistanceKm}
+        />
 
         <MapScene
           position={displayPosition}
@@ -320,17 +396,13 @@ export default function App() {
           nowMs={nowMs}
           geolocationStatus={geolocationStatus}
           onUseMyLocation={handleUseMyLocation}
-          locations={locations}
-          locationsSource={locationsSource}
-          locationName={locationName}
-          onLocationNameChange={setLocationName}
-          onSaveLocation={handleSaveLocation}
-          onLoadLocation={handleLoadLocation}
-          onDeleteLocation={handleDeleteLocation}
-          onCopyShareLink={handleCopyShareLink}
-          linkCopied={linkCopied}
+          closestApproachKm={closestApproachKm}
+          localTwilightTransition={localTwilightTransition}
+          goldenWindowCountry={goldenWindowCountry}
         />
       </div>
+
+      <ToastStack toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

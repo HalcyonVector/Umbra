@@ -4,7 +4,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import issRouter from './routes/iss.js';
 import astrosRouter from './routes/astros.js';
-import presetsRouter from './routes/presets.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CLIENT_DIST = path.join(__dirname, '..', '..', 'client', 'dist');
@@ -18,7 +17,6 @@ export function createApp() {
 
   app.use('/api/iss', issRouter);
   app.use('/api/astros', astrosRouter);
-  app.use('/api/presets', presetsRouter);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 

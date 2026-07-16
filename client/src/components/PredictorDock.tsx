@@ -1,7 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import type { LocationPreset } from '../types';
-import type { LocationSource } from '../lib/presetsStore';
-import type { PassPrediction, CrossingPrediction } from '../orbital/eventPrediction';
+import type { PassPrediction, CrossingPrediction, LocalTwilightTransition } from '../orbital/eventPrediction';
 import { formatDurationShort } from '../lib/formatTime';
 import { SkyPlot } from './SkyPlot';
 
@@ -18,15 +16,9 @@ interface PredictorDockProps {
   nowMs: number;
   geolocationStatus: GeolocationStatus;
   onUseMyLocation: () => void;
-  locations: LocationPreset[];
-  locationsSource: LocationSource;
-  locationName: string;
-  onLocationNameChange: (v: string) => void;
-  onSaveLocation: () => void;
-  onLoadLocation: (name: string) => void;
-  onDeleteLocation: (name: string) => void;
-  onCopyShareLink: () => void;
-  linkCopied: boolean;
+  closestApproachKm: number | null;
+  localTwilightTransition: LocalTwilightTransition | null;
+  goldenWindowCountry: string | null;
 }
 
 type ManifestEntry =
@@ -69,37 +61,19 @@ function IconTarget() {
   );
 }
 
-function IconLink() {
+function IconGlobe() {
   return (
-    <svg {...ICON_PROPS}>
-      <path d="M6.5 9.5 9.5 6.5"></path>
-      <path d="M7 4.2 8.3 2.9a2.6 2.6 0 0 1 3.7 3.7L10.7 7.9M9 11.8l-1.3 1.3a2.6 2.6 0 0 1-3.7-3.7L5.3 8.1"></path>
+    <svg {...ICON_PROPS} width={14} height={14}>
+      <circle cx="8" cy="8" r="6.2"></circle>
+      <path d="M1.8 8h12.4M8 1.8c2.2 1.8 2.2 10.6 0 12.4C5.8 12.4 5.8 3.6 8 1.8Z"></path>
     </svg>
   );
 }
 
-function IconCheck() {
+function IconMoon() {
   return (
-    <svg {...ICON_PROPS}>
-      <path d="M3.2 8.4 6.3 11.5 12.8 5"></path>
-    </svg>
-  );
-}
-
-function IconPlay() {
-  return (
-    <svg {...ICON_PROPS} fill="currentColor" stroke="none">
-      <path d="M4.5 3.3v9.4a.6.6 0 0 0 .93.5l7.3-4.7a.6.6 0 0 0 0-1l-7.3-4.7a.6.6 0 0 0-.93.5Z"></path>
-    </svg>
-  );
-}
-
-function IconTrash() {
-  return (
-    <svg {...ICON_PROPS}>
-      <path d="M3.3 4.7h9.4"></path>
-      <path d="M6.2 4.7V3.3h3.6v1.4M6.7 7.3v3.6M9.3 7.3v3.6"></path>
-      <path d="M4.4 4.7 5 12.1c.05.6.55 1 1.15 1h3.7c.6 0 1.1-.4 1.15-1l.6-7.4"></path>
+    <svg {...ICON_PROPS} width={14} height={14} strokeLinejoin="round">
+      <path d="M13 9.4A5.6 5.6 0 1 1 6.6 3a4.5 4.5 0 0 0 6.4 6.4Z"></path>
     </svg>
   );
 }
@@ -112,13 +86,20 @@ const GEO_STATUS_LABEL: Record<GeolocationStatus, string | null> = {
   error: 'Could not get your location — enter coordinates manually.',
 };
 
-/** The permanent right dock: where you're watching from, the sky-plot for the next pass, and what's coming up. */
+function IconChevron() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="details-chevron">
+      <path d="M4.5 6 8 10 11.5 6" />
+    </svg>
+  );
+}
+
+/** The permanent right dock: where you're watching from, the sky-plot for the next pass, and what's coming up. Each section past the always-visible next-pass summary is a click-to-expand <details> disclosure rather than one long permanently-open scroll. */
 export function PredictorDock({
   observer, onSetObserver, minElevationDeg, onMinElevationChange,
   passes, crossings, telemetryReady, nowMs,
   geolocationStatus, onUseMyLocation,
-  locations, locationsSource, locationName, onLocationNameChange, onSaveLocation, onLoadLocation, onDeleteLocation,
-  onCopyShareLink, linkCopied,
+  closestApproachKm, localTwilightTransition, goldenWindowCountry,
 }: PredictorDockProps) {
   const [latInput, setLatInput] = useState(observer ? String(observer.lat.toFixed(4)) : '');
   const [lonInput, setLonInput] = useState(observer ? String(observer.lon.toFixed(4)) : '');
@@ -137,7 +118,7 @@ export function PredictorDock({
 
   return (
     <aside className="dock">
-      <div>
+      <div className="hud-card dock-card--hero">
         <div className="dock-heading">
           {observer ? 'Next pass' : 'Next pass · set a location'}
         </div>
@@ -161,10 +142,28 @@ export function PredictorDock({
         )}
       </div>
 
-      <SkyPlot pass={nextPass} />
+      {goldenWindowCountry && (
+        <div className="golden-window hud-card">
+          <IconGlobe />
+          <span>
+            Right now, <b>{goldenWindowCountry}</b> has an exceptional view — the ISS is lit and the sky's dark enough there.
+          </span>
+        </div>
+      )}
 
-      <div className="hud-card">
-        <div className="dock-heading" style={{ marginBottom: 10 }}>Watching from</div>
+      <details className="dock-section hud-card">
+        <summary className="dock-heading dock-heading--clickable">
+          <IconChevron />
+          Sky chart
+        </summary>
+        <SkyPlot pass={nextPass} />
+      </details>
+
+      <details className="dock-section hud-card" open>
+        <summary className="dock-heading dock-heading--clickable" style={{ marginBottom: 10 }}>
+          <IconChevron />
+          Watching from
+        </summary>
         <button type="button" className="btn-console btn-console--wide" onClick={onUseMyLocation} disabled={geolocationStatus === 'locating'}>
           <IconTarget />
           {geolocationStatus === 'locating' ? 'Locating…' : 'Use my location'}
@@ -200,10 +199,32 @@ export function PredictorDock({
             aria-label="Minimum look-angle elevation to count as a visible pass"
           />
         </label>
-      </div>
 
-      <div className="hud-card">
-        <div className="dock-heading" style={{ marginBottom: 6 }}>Manifest</div>
+        {observer && closestApproachKm !== null && (
+          <div className="dock-stat">
+            <IconTarget />
+            <span>
+              Closest approach this session: <b className="num">{Math.round(closestApproachKm).toLocaleString()} km</b>
+            </span>
+          </div>
+        )}
+
+        {observer && localTwilightTransition && (
+          <div className="dock-stat">
+            <IconMoon />
+            <span>
+              Your sky {localTwilightTransition.becomingDark ? 'gets dark enough to look up' : 'gets too bright to spot it'} in{' '}
+              <b className="num">{formatDurationShort(localTwilightTransition.atMs - nowMs)}</b>
+            </span>
+          </div>
+        )}
+      </details>
+
+      <details className="dock-section hud-card" open>
+        <summary className="dock-heading dock-heading--clickable" style={{ marginBottom: 6 }}>
+          <IconChevron />
+          Manifest
+        </summary>
         {!telemetryReady ? (
           <p className="hud-note">Waiting for live ISS telemetry to derive an orbit…</p>
         ) : manifest.length === 0 ? (
@@ -221,48 +242,7 @@ export function PredictorDock({
             ))}
           </div>
         )}
-      </div>
-
-      <div className="hud-card">
-        <div className="dock-heading" style={{ marginBottom: 10 }}>
-          Saved locations
-          {locationsSource === 'local' && <span className="badge">offline</span>}
-        </div>
-        <div className="preset-save-row">
-          <input
-            type="text" placeholder="Name this location…" value={locationName}
-            onChange={(e) => onLocationNameChange(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && locationName.trim() && observer) onSaveLocation();
-            }}
-          />
-          <button onClick={onSaveLocation} disabled={!locationName.trim() || !observer}>Save</button>
-        </div>
-        <button
-          className={linkCopied ? 'share-link-btn share-link-btn--copied' : 'share-link-btn'}
-          onClick={onCopyShareLink}
-          disabled={!observer}
-        >
-          {linkCopied ? <IconCheck /> : <IconLink />}
-          {linkCopied ? 'Link copied' : 'Copy share link'}
-        </button>
-
-        {locations.length > 0 && (
-          <ul className="presets-list">
-            {locations.map((loc) => (
-              <li key={loc.name}>
-                <span>{loc.name}</span>
-                <button className="preset-action-btn" onClick={() => onLoadLocation(loc.name)} aria-label={`Load location ${loc.name}`}>
-                  <IconPlay /> Load
-                </button>
-                <button className="preset-action-btn preset-action-btn--danger" onClick={() => onDeleteLocation(loc.name)} aria-label={`Delete location ${loc.name}`}>
-                  <IconTrash />
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      </details>
 
       <p className="dock-footnote">
         Predictions assume a circular, non-precessing orbit at a fixed known inclination — accurate over the
