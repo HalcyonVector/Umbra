@@ -143,15 +143,20 @@
 }
 
 /* ---------- Guided tour ---------- */
+/* Classes deliberately avoid "tour"/"overlay"/"popup"/"modal" — a
+   full-viewport fixed div with a dark backdrop under those names is exactly
+   what generic ad-blocker "hide overlays/popups" cosmetic filters target;
+   confirmed as the actual cause of this getting silently stripped seconds
+   after mount for a user running one such extension. */
 
-.tour-overlay {
+.umbra-guide-layer {
   position: fixed;
   inset: 0;
   z-index: 40;
   pointer-events: none;
 }
 
-.tour-spotlight {
+.umbra-guide-highlight {
   position: fixed;
   border-radius: 6px;
   /* A lighter backdrop than the original 0.78 alpha — that read as the rest
@@ -164,7 +169,7 @@
   transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
 }
 
-.tour-card {
+.umbra-guide-card {
   position: fixed;
   background: var(--panel-raised);
   border: 1px solid var(--accent-dim);
@@ -173,7 +178,7 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
-.tour-card-step {
+.umbra-guide-step {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
@@ -182,7 +187,7 @@
   margin-bottom: 8px;
 }
 
-.tour-card h3 {
+.umbra-guide-card h3 {
   margin: 0 0 8px;
   font-family: var(--font-display);
   font-weight: 600;
@@ -190,14 +195,14 @@
   color: var(--text-primary);
 }
 
-.tour-card p {
+.umbra-guide-card p {
   margin: 0 0 14px;
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--text-secondary);
 }
 
-.tour-card-actions {
+.umbra-guide-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -205,7 +210,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tour-spotlight, .tour-card { animation: none !important; transition: none !important; }
+  .umbra-guide-highlight, .umbra-guide-card { animation: none !important; transition: none !important; }
 }
 
 /* ---------- Buttons / generic controls ---------- */

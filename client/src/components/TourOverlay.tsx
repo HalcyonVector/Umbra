@@ -40,6 +40,12 @@ interface TourOverlayProps {
  * "hole" in the backdrop is a plain CSS trick (a giant box-shadow on a div
  * sized to the target's own bounding rect) rather than an SVG mask, so it
  * stays in sync with layout/scroll with nothing more than a resize listener.
+ *
+ * Deliberately named umbra-guide-* rather than tour-overlay/popup/modal:
+ * a full-viewport fixed div with a dark backdrop and those class names is
+ * exactly what generic ad-blocker "hide overlays/popups" cosmetic filters
+ * target — confirmed as the actual cause of this getting silently stripped
+ * seconds after mount for a user running one such extension.
  */
 export function TourOverlay({ onFinish }: TourOverlayProps) {
   const [stepIndex, setStepIndex] = useState(0);
@@ -91,20 +97,20 @@ export function TourOverlay({ onFinish }: TourOverlayProps) {
   const cardLeft = rect ? Math.min(viewportW - cardWidth - 16, Math.max(16, rect.left + rect.width / 2 - cardWidth / 2)) : viewportW / 2 - cardWidth / 2;
 
   return (
-    <div className="tour-overlay" role="dialog" aria-modal="true" aria-label="Guided tour">
+    <div className="umbra-guide-layer" role="dialog" aria-modal="true" aria-label="Guided tour">
       {rect && (
         <div
-          className="tour-spotlight"
+          className="umbra-guide-highlight"
           style={{ top: rect.top - 6, left: rect.left - 6, width: rect.width + 12, height: rect.height + 12 }}
         />
       )}
-      <div className="tour-card" style={{ top: cardTop, left: cardLeft, width: cardWidth }}>
-        <div className="tour-card-step">
+      <div className="umbra-guide-card" style={{ top: cardTop, left: cardLeft, width: cardWidth }}>
+        <div className="umbra-guide-step">
           {stepIndex + 1} / {STEPS.length}
         </div>
         <h3>{step.title}</h3>
         <p>{step.body}</p>
-        <div className="tour-card-actions">
+        <div className="umbra-guide-actions">
           <button className="ghost" onClick={onFinish}>
             Skip
           </button>
