@@ -4,8 +4,10 @@ const router = Router();
 
 // Everyone currently in space, not just aboard the ISS (Open Notify's
 // astros.json also includes Tiangong crew, when occupied) — see the
-// README's Honest Limitations section on this.
-const ASTROS_URL = 'https://api.open-notify.org/astros.json';
+// README's Honest Limitations section on this. Plain http, not https: see
+// the matching comment in routes/iss.js — Open Notify's HTTPS listener
+// often refuses the connection outright.
+const ASTROS_URL = 'http://api.open-notify.org/astros.json';
 
 // Crew manifests change on the order of days, not seconds — a long cache
 // TTL is honest here, not just a rate-limit courtesy.

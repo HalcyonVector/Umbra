@@ -16,6 +16,8 @@ export function useIssFeed(pollMs: number = POLL_MS) {
   const [position, setPosition] = useState<IssPosition | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const [lastFixMs, setLastFixMs] = useState<number | null>(null);
   const cancelledRef = useRef(false);
 
   useEffect(() => {
@@ -29,8 +31,13 @@ export function useIssFeed(pollMs: number = POLL_MS) {
         if (cancelledRef.current) return;
         setPosition(data.position);
         setError(null);
+        setConsecutiveFailures(0);
+        setLastFixMs(Date.now());
       } catch (err) {
-        if (!cancelledRef.current) setError(err instanceof Error ? err.message : 'ISS feed fetch failed');
+        if (!cancelledRef.current) {
+          setError(err instanceof Error ? err.message : 'ISS feed fetch failed');
+          setConsecutiveFailures((n) => n + 1);
+        }
       } finally {
         if (!cancelledRef.current) setLoading(false);
       }
@@ -44,5 +51,5 @@ export function useIssFeed(pollMs: number = POLL_MS) {
     };
   }, [pollMs]);
 
-  return { position, error, loading };
+  return { position, error, loading, consecutiveFailures, lastFixMs };
 }
