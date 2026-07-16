@@ -52,12 +52,18 @@
 /* ---------- Session milestone toasts ---------- */
 
 .toast-stack {
+  /* Bottom-center of the whole viewport, not tucked into either side panel —
+     anchoring it to a corner (the original layout) put it directly on top
+     of the dock's own bottom-right content, reading as a stuck/overlapping
+     element rather than a distinct notification. */
   position: fixed;
-  right: 18px;
+  left: 50%;
   bottom: 18px;
+  transform: translateX(-50%);
   z-index: 30;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
   pointer-events: none;
   max-width: 280px;
@@ -148,8 +154,12 @@
 .tour-spotlight {
   position: fixed;
   border-radius: 6px;
-  box-shadow: 0 0 0 9999px rgba(3, 4, 6, 0.78);
-  outline: 1px solid var(--accent-dim);
+  /* A lighter backdrop than the original 0.78 alpha — that read as the rest
+     of the app going dim/broken rather than one area being highlighted.
+     The hard 1px outline is replaced with a soft glow for the same reason:
+     a thin line sitting exactly on the rail/map boundary looked like a
+     misplaced scrollbar rather than an intentional highlight. */
+  box-shadow: 0 0 0 9999px rgba(3, 4, 6, 0.42), 0 0 0 2px var(--accent-dim), 0 0 20px 2px rgba(111, 224, 201, 0.2);
   pointer-events: none;
   transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
 }

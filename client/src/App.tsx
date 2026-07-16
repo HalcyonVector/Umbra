@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { feature } from 'topojson-client';
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 import worldCountries from 'world-atlas/countries-110m.json';
@@ -69,13 +69,17 @@ export default function App() {
   const [totalDistanceKm, setTotalDistanceKm] = useState(0);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const addToast = (message: string) => {
+  // Stable identities: App re-renders on every telemetry tick, and Toast's
+  // auto-dismiss timer effect depends on `onDismiss` — a fresh function
+  // reference each render was resetting that timer before it ever reached
+  // its 6s duration, so toasts never auto-dismissed.
+  const addToast = useCallback((message: string) => {
     setToasts((t) => [...t, { id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, message }]);
-  };
+  }, []);
 
-  const dismissToast = (id: string) => {
+  const dismissToast = useCallback((id: string) => {
     setToasts((t) => t.filter((x) => x.id !== id));
-  };
+  }, []);
 
   const finishTour = () => {
     setShowTour(false);

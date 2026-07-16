@@ -55,6 +55,37 @@ interface TrailSegment {
   opacity: number;
 }
 
+/**
+ * Leaflet's tile layer redraws seamlessly as you drag past +-180deg
+ * (worldCopyJump), but plain vector layers (Marker, Polyline, Polygon) only
+ * ever exist at the one longitude they were given — they don't get
+ * duplicated into whichever "world copy" is currently in view. Left alone,
+ * every custom layer on this map (the ISS marker, both trails, the observer
+ * marker, the night-shading polygon) would appear to vanish the moment you
+ * drag one world-width away from where they were last positioned, and
+ * reappear/flicker as you drag back — exactly the "ghosting" and breakage
+ * this fixes. The remedy: whenever the map's own view shifts, re-anchor
+ * every custom layer's longitude to the copy nearest the current view
+ * center, shifting a whole shape by one consistent offset so it keeps its
+ * form (rather than shifting each point independently, which would tear a
+ * trail apart right at the antimeridian of whichever copy is in view).
+ */
+function nearestWorldCopyOffset(anchorLon: number, referenceLon: number): number {
+  return Math.round((referenceLon - anchorLon) / 360) * 360;
+}
+
+function shiftLatLngs(latlngs: [number, number][], referenceLon: number): [number, number][] {
+  if (latlngs.length === 0) return latlngs;
+  const shift = nearestWorldCopyOffset(latlngs[0][1], referenceLon);
+  if (shift === 0) return latlngs;
+  return latlngs.map(([lat, lon]) => [lat, lon + shift]);
+}
+
+function shiftLatLng(latlng: [number, number], referenceLon: number): [number, number] {
+  const shift = nearestWorldCopyOffset(latlng[1], referenceLon);
+  return shift === 0 ? latlng : [latlng[0], latlng[1] + shift];
+}
+
 /** Splits an already-unwrapped trail into `count` segments (each overlapping its neighbor by one point, so the line reads as continuous) with opacity rising toward the newest (last) point. */
 function buildFadingSegments(unwrapped: [number, number][], count: number): TrailSegment[] {
   const n = unwrapped.length;
@@ -132,6 +163,16 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   const nightLayerRef = useRef<L.Polygon | null>(null);
   const hasCenteredRef = useRef(false);
 
+  // Raw (un-shifted, canonical +-180deg) coordinates for every custom layer,
+  // kept alongside the Leaflet objects so a 'move' handler can re-anchor
+  // them to whichever world copy is currently in view without needing the
+  // latest React props in scope (see nearestWorldCopyOffset above).
+  const rawPositionRef = useRef<[number, number] | null>(null);
+  const rawObservedSegmentsRef = useRef<TrailSegment[]>([]);
+  const rawPredictedRef = useRef<[number, number][]>([]);
+  const rawObserverRef = useRef<[number, number] | null>(null);
+  const rawNightRef = useRef<[number, number][]>([]);
+
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, {
@@ -145,7 +186,31 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 }).addTo(map);
 
     mapRef.current = map;
+
+    const resyncWorldCopies = () => {
+      const referenceLon = map.getCenter().lng;
+
+      if (rawPositionRef.current && issMarkerRef.current) {
+        issMarkerRef.current.setLatLng(shiftLatLng(rawPositionRef.current, referenceLon));
+      }
+      if (rawObserverRef.current && observerMarkerRef.current) {
+        observerMarkerRef.current.setLatLng(shiftLatLng(rawObserverRef.current, referenceLon));
+      }
+      if (rawPredictedRef.current.length > 0 && predictedLineRef.current) {
+        predictedLineRef.current.setLatLngs(shiftLatLngs(rawPredictedRef.current, referenceLon));
+      }
+      if (rawNightRef.current.length > 0 && nightLayerRef.current) {
+        nightLayerRef.current.setLatLngs(shiftLatLngs(rawNightRef.current, referenceLon));
+      }
+      const lines = observedLineRefs.current;
+      rawObservedSegmentsRef.current.forEach((seg, i) => {
+        lines[i]?.setLatLngs(shiftLatLngs(seg.latlngs, referenceLon));
+      });
+    };
+    map.on('moveend', resyncWorldCopies);
+
     return () => {
+      map.off('moveend', resyncWorldCopies);
       map.remove();
       mapRef.current = null;
     };
@@ -154,13 +219,16 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !position) return;
+    const raw: [number, number] = [position.lat, position.lon];
+    rawPositionRef.current = raw;
+    const latlng = shiftLatLng(raw, map.getCenter().lng);
     if (!issMarkerRef.current) {
-      issMarkerRef.current = L.marker([position.lat, position.lon], { icon: ISS_ICON, interactive: false }).addTo(map);
+      issMarkerRef.current = L.marker(latlng, { icon: ISS_ICON, interactive: false }).addTo(map);
     } else {
-      issMarkerRef.current.setLatLng([position.lat, position.lon]);
+      issMarkerRef.current.setLatLng(latlng);
     }
     if (!hasCenteredRef.current) {
-      map.setView([position.lat, position.lon], 3);
+      map.setView(latlng, 3);
       hasCenteredRef.current = true;
     }
   }, [position]);
@@ -168,14 +236,17 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
+    const referenceLon = map.getCenter().lng;
     const segments = buildFadingSegments(unwrapTrail(observedTrail), OBSERVED_TRAIL_SEGMENTS);
+    rawObservedSegmentsRef.current = segments;
     const lines = observedLineRefs.current;
 
     segments.forEach((seg, i) => {
+      const latlngs = shiftLatLngs(seg.latlngs, referenceLon);
       if (!lines[i]) {
-        lines[i] = L.polyline(seg.latlngs, { color: OBSERVED_TRAIL_COLOR, weight: 2, opacity: seg.opacity }).addTo(map);
+        lines[i] = L.polyline(latlngs, { color: OBSERVED_TRAIL_COLOR, weight: 2, opacity: seg.opacity }).addTo(map);
       } else {
-        lines[i].setLatLngs(seg.latlngs);
+        lines[i].setLatLngs(latlngs);
         lines[i].setStyle({ opacity: seg.opacity });
       }
     });
@@ -189,7 +260,9 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const latlngs = unwrapTrail(predictedTrail);
+    const raw = unwrapTrail(predictedTrail);
+    rawPredictedRef.current = raw;
+    const latlngs = shiftLatLngs(raw, map.getCenter().lng);
     if (!predictedLineRef.current) {
       predictedLineRef.current = L.polyline(latlngs, { color: PREDICTED_TRAIL_COLOR, weight: 2.4, dashArray: '5 5', opacity: 0.9 }).addTo(map);
     } else {
@@ -200,8 +273,11 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !observer) return;
+    const raw: [number, number] = [observer.lat, observer.lon];
+    rawObserverRef.current = raw;
+    const latlng = shiftLatLng(raw, map.getCenter().lng);
     if (!observerMarkerRef.current) {
-      observerMarkerRef.current = L.circleMarker([observer.lat, observer.lon], {
+      observerMarkerRef.current = L.circleMarker(latlng, {
         radius: 5,
         color: '#060709',
         weight: 1.5,
@@ -209,7 +285,7 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
         fillOpacity: 1,
       }).addTo(map);
     } else {
-      observerMarkerRef.current.setLatLng([observer.lat, observer.lon]);
+      observerMarkerRef.current.setLatLng(latlng);
     }
   }, [observer]);
 
@@ -219,7 +295,9 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const latlngs = buildNightPolygon(nowMs);
+    const raw = buildNightPolygon(nowMs);
+    rawNightRef.current = raw;
+    const latlngs = shiftLatLngs(raw, map.getCenter().lng);
     if (!nightLayerRef.current) {
       nightLayerRef.current = L.polygon(latlngs, { color: 'transparent', weight: 0, fillColor: NIGHT_FILL, fillOpacity: 0.38 }).addTo(map);
     } else {
