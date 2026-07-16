@@ -8,19 +8,19 @@ interface IntroStep {
 const STEPS: IntroStep[] = [
   {
     title: 'A real, live map',
-    body: "Tracks the ISS's actual position. Drag to look around, scroll or pinch to zoom — it's a real map, not an illustration.",
+    body: "Tracks the ISS's actual position. Drag to look around, scroll or pinch to zoom. It's a real map, not an illustration.",
   },
   {
     title: 'Mission stats',
-    body: 'The left panel builds up the longer you leave this open — distance flown, countries overflown, orbit count. Click any heading to collapse it.',
+    body: 'The left panel builds up the longer you leave this open: distance flown, countries overflown, orbit count, and which country is being overflown right now.',
   },
   {
     title: 'Visibility predictor',
-    body: "Set your location in the right panel to find out exactly when it'll be bright enough to spot overhead — real orbital mechanics and solar geometry, not a guess.",
+    body: "Set your location in the right panel to find out exactly when it'll be bright enough to spot overhead. Real orbital mechanics and solar geometry, not a guess.",
   },
   {
     title: 'Know where to look',
-    body: 'Every predicted pass gets a real rise-to-set sky chart. Watch too for the "golden window" banner — it flags the single best place on Earth to look up, right now.',
+    body: 'Every predicted pass gets a real rise-to-set sky chart. Watch too for the "golden window" banner: it flags the single best place on Earth to look up, right now.',
   },
 ];
 

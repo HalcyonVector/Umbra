@@ -89,20 +89,12 @@ function IconStar() {
 const GEO_STATUS_LABEL: Record<GeolocationStatus, string | null> = {
   idle: null,
   locating: 'Locating…',
-  denied: 'Location permission denied — enter coordinates manually.',
-  unsupported: 'Geolocation isn\'t available in this browser — enter coordinates manually.',
-  error: 'Could not get your location — enter coordinates manually.',
+  denied: 'Location permission denied. Enter coordinates manually.',
+  unsupported: 'Geolocation isn\'t available in this browser. Enter coordinates manually.',
+  error: 'Could not get your location. Enter coordinates manually.',
 };
 
-function IconChevron() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="details-chevron">
-      <path d="M4.5 6 8 10 11.5 6" />
-    </svg>
-  );
-}
-
-/** The permanent right dock: where you're watching from, the sky-plot for the next pass, and what's coming up. Each section past the always-visible next-pass summary is a click-to-expand <details> disclosure rather than one long permanently-open scroll. */
+/** The permanent right dock: where you're watching from, the sky-plot for the next pass, and what's coming up. */
 export function PredictorDock({
   observer, onSetObserver, minElevationDeg, onMinElevationChange,
   passes, crossings, telemetryReady, nowMs,
@@ -154,24 +146,18 @@ export function PredictorDock({
         <div className="golden-window hud-card">
           <IconGlobe />
           <span>
-            Right now, <b>{goldenWindowCountry}</b> has an exceptional view — the ISS is lit and the sky's dark enough there.
+            Right now, <b>{goldenWindowCountry}</b> has an exceptional view: the ISS is lit and the sky's dark enough there.
           </span>
         </div>
       )}
 
-      <details className="dock-section hud-card">
-        <summary className="dock-heading dock-heading--clickable">
-          <IconChevron />
-          Sky chart
-        </summary>
+      <div className="dock-section hud-card">
+        <div className="dock-heading">Sky chart</div>
         <SkyPlot pass={nextPass} />
-      </details>
+      </div>
 
-      <details className="dock-section hud-card" open>
-        <summary className="dock-heading dock-heading--clickable" style={{ marginBottom: 10 }}>
-          <IconChevron />
-          Watching from
-        </summary>
+      <div className="dock-section hud-card">
+        <div className="dock-heading" style={{ marginBottom: 10 }}>Watching from</div>
         <button type="button" className="btn-console btn-console--wide" onClick={onUseMyLocation} disabled={geolocationStatus === 'locating'}>
           <IconTarget />
           {geolocationStatus === 'locating' ? 'Locating…' : 'Use my location'}
@@ -226,13 +212,10 @@ export function PredictorDock({
             </span>
           </div>
         )}
-      </details>
+      </div>
 
-      <details className="dock-section hud-card" open>
-        <summary className="dock-heading dock-heading--clickable" style={{ marginBottom: 6 }}>
-          <IconChevron />
-          Manifest
-        </summary>
+      <div className="dock-section hud-card">
+        <div className="dock-heading" style={{ marginBottom: 6 }}>Manifest</div>
         {!telemetryReady ? (
           <p className="hud-note">Waiting for live ISS telemetry to derive an orbit…</p>
         ) : manifest.length === 0 ? (
@@ -261,10 +244,10 @@ export function PredictorDock({
             })}
           </div>
         )}
-      </details>
+      </div>
 
       <p className="dock-footnote">
-        Predictions assume a circular, non-precessing orbit at a fixed known inclination — accurate over the
+        Predictions assume a circular, non-precessing orbit at a fixed known inclination. Accurate over the
         windows shown here, not a substitute for a real TLE-based ephemeris.
       </p>
     </aside>

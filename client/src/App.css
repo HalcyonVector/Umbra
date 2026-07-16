@@ -268,6 +268,31 @@ button.ghost:hover {
   min-height: 0;
 }
 
+/* A thin, low-contrast scrollbar instead of the OS-default full-width one —
+   the default reads as a bright, chunky bar cutting into the panel right
+   at its edge, at odds with the rest of the instrument-panel styling. */
+.rail, .dock {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.rail::-webkit-scrollbar, .dock::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rail::-webkit-scrollbar-track, .dock::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rail::-webkit-scrollbar-thumb, .dock::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 3px;
+}
+
+.rail::-webkit-scrollbar-thumb:hover, .dock::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-dim);
+}
+
 .hud-card.rail-card {
   padding: 12px 14px;
 }
@@ -453,29 +478,51 @@ button.ghost:hover {
   font-size: 12px;
 }
 
-.country-chips {
+.country-list {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 4px 0 10px;
+  flex-direction: column;
+  padding: 2px 0 4px;
 }
 
-.country-chip {
+.country-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  background: var(--panel-raised);
-  border: 1px solid var(--line);
+  gap: 9px;
+  padding: 7px 2px;
+  font-size: 12px;
   color: var(--text-secondary);
-  padding: 4px 8px;
-  font-size: 11px;
-  border-radius: 3px;
-  line-height: 1;
+  border-bottom: 1px solid var(--line);
 }
 
-.country-chip svg {
+.country-row:last-child {
+  border-bottom: none;
+}
+
+.country-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
   flex-shrink: 0;
-  opacity: 0.7;
+}
+
+.country-row--current {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.country-dot--current {
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent-glow);
+}
+
+.country-current-label {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
 }
 
 .rail-foot {
@@ -622,34 +669,6 @@ button.ghost:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-/* ---------- Collapsible dock sections ---------- */
-/* Native <details>/<summary>: click-to-expand, keyboard-accessible, no JS
-   state needed. Everything past the always-visible next-pass summary lives
-   in one of these, so the dock is never one long forced-open scroll. */
-
-.dock-heading--clickable {
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.dock-heading--clickable::-webkit-details-marker {
-  display: none;
-}
-
-.dock-heading--clickable:hover {
-  color: var(--text-secondary);
-}
-
-.details-chevron {
-  flex-shrink: 0;
-  transition: transform 0.15s ease;
-}
-
-details[open] > .dock-heading--clickable .details-chevron {
-  transform: rotate(180deg);
 }
 
 .dock-stat {

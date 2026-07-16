@@ -73,29 +73,12 @@ function OrbitalSpeedIcon() {
   );
 }
 
-function GlobeIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" aria-hidden="true">
-      <circle cx="8" cy="8" r="6.2" />
-      <path d="M1.8 8h12.4M8 1.8c2.2 1.8 2.2 10.6 0 12.4C5.8 12.4 5.8 3.6 8 1.8Z" />
-    </svg>
-  );
-}
-
 function OdometerIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M2 12.5A6 6 0 1 1 14 12.5" />
       <path d="M8 8 5.6 5.6" />
       <circle cx="8" cy="8" r="0.9" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function IconChevron() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="details-chevron">
-      <path d="M4.5 6 8 10 11.5 6" />
     </svg>
   );
 }
@@ -107,9 +90,9 @@ function fmt(n: number, digits = 1) {
 /**
  * The left instrument cluster. An orbit-progress dial anchors a permanent
  * hero card; everything else (telemetry, crew, odometer, countries) is a
- * click-to-expand <details> section, open by default, matching the dock's
- * pattern — so on a narrow screen these can be collapsed instead of forcing
- * a long scroll before reaching the map.
+ * plain always-visible card. The countries-overflown list highlights
+ * whichever country the ISS is over right now, distinct from ones already
+ * visited this session.
  */
 export function TelemetryRail({
   telemetry, solarState, crew, sunriseCount, sunsetCount,
@@ -152,10 +135,8 @@ export function TelemetryRail({
         </div>
       </div>
 
-      <details className="hud-card rail-card" open>
-        <summary className="rail-section-label dock-heading--clickable">
-          <span><IconChevron /> Telemetry</span>
-        </summary>
+      <div className="hud-card rail-card">
+        <div className="rail-section-label">Telemetry</div>
         <div className="telemetry-row">
           <span className="telemetry-icon"><AltitudeIcon /></span>
           <span>
@@ -185,12 +166,10 @@ export function TelemetryRail({
         {telemetry.orbitalSpeedKmS != null && (
           <p className="rail-fun-fact">{fmt(speedAsJetMultiple(telemetry.orbitalSpeedKmS), 0)}× a commercial jet</p>
         )}
-      </details>
+      </div>
 
-      <details className="hud-card rail-card" open>
-        <summary className="rail-section-label dock-heading--clickable">
-          <span><IconChevron /> Crew aboard</span>
-        </summary>
+      <div className="hud-card rail-card">
+        <div className="rail-section-label">Crew aboard</div>
         <div className="crew-row">
           {telemetry.crewCount > 0 ? (
             <>
@@ -205,12 +184,10 @@ export function TelemetryRail({
             <span className="rail-value num" style={{ fontSize: '15px' }}>—</span>
           )}
         </div>
-      </details>
+      </div>
 
-      <details className="hud-card rail-card" open>
-        <summary className="rail-section-label dock-heading--clickable">
-          <span><IconChevron /> Session odometer</span>
-        </summary>
+      <div className="hud-card rail-card">
+        <div className="rail-section-label">Session odometer</div>
         <div className="telemetry-row">
           <span className="telemetry-icon"><OdometerIcon /></span>
           <span>
@@ -225,26 +202,30 @@ export function TelemetryRail({
               : `${fmt(earthTrips, 2)}× around Earth`}
           </p>
         )}
-      </details>
+      </div>
 
-      <details className="hud-card rail-card" open>
-        <summary className="rail-section-label dock-heading--clickable">
-          <span><IconChevron /> Countries overflown</span>
+      <div className="hud-card rail-card">
+        <div className="rail-section-label">
+          Countries overflown
           <span className="rail-section-count num">{countriesOverflown.length}</span>
-        </summary>
+        </div>
         {countriesOverflown.length === 0 ? (
           <p className="hud-note">None yet this session.</p>
         ) : (
-          <div className="country-chips">
-            {countriesOverflown.map((name) => (
-              <span className="country-chip" key={name}>
-                <GlobeIcon />
-                {name}
-              </span>
-            ))}
+          <div className="country-list">
+            {countriesOverflown.map((name) => {
+              const isCurrent = name === telemetry.country;
+              return (
+                <div className={`country-row${isCurrent ? ' country-row--current' : ''}`} key={name}>
+                  <span className={`country-dot${isCurrent ? ' country-dot--current' : ''}`} />
+                  {name}
+                  {isCurrent && <span className="country-current-label">Now</span>}
+                </div>
+              );
+            })}
           </div>
         )}
-      </details>
+      </div>
 
       <div className="rail-foot">Position via Open Notify, with an automatic fallback feed if it's down. Altitude, speed, and orbit shape are derived, not reported.</div>
     </aside>
