@@ -125,7 +125,7 @@ export function PredictorDock({
   const manifest = buildManifest(passes, crossings).slice(0, 6);
 
   return (
-    <aside className="dock" data-tour="dock">
+    <aside className="dock">
       <div className="hud-card dock-card--hero">
         <div className="dock-heading">
           {observer ? 'Next pass' : 'Next pass · set a location'}
@@ -159,7 +159,7 @@ export function PredictorDock({
         </div>
       )}
 
-      <details className="dock-section hud-card" data-tour="sky-chart">
+      <details className="dock-section hud-card">
         <summary className="dock-heading dock-heading--clickable">
           <IconChevron />
           Sky chart

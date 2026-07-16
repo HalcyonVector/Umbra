@@ -21,7 +21,7 @@ import {
 } from './lib/localSettings';
 import { MapScene } from './components/MapScene';
 import { TopBar } from './components/TopBar';
-import { TourOverlay } from './components/TourOverlay';
+import { IntroCard } from './components/IntroCard';
 import { TelemetryRail } from './components/TelemetryRail';
 import { PredictorDock, type GeolocationStatus } from './components/PredictorDock';
 import { ToastStack, type ToastItem } from './components/ToastStack';
@@ -405,7 +405,7 @@ export default function App() {
       </div>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
-      {showTour && <TourOverlay onFinish={finishTour} />}
+      {showTour && <IntroCard onFinish={finishTour} />}
     </div>
   );
 }

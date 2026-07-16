@@ -142,43 +142,32 @@
   font-weight: 500;
 }
 
-/* ---------- Guided tour ---------- */
-/* Classes deliberately avoid "tour"/"overlay"/"popup"/"modal" — a
-   full-viewport fixed div with a dark backdrop under those names is exactly
-   what generic ad-blocker "hide overlays/popups" cosmetic filters target;
-   confirmed as the actual cause of this getting silently stripped seconds
-   after mount for a user running one such extension. */
+/* ---------- Intro card ---------- */
+/* Deliberately as simple as a fixed-position card can be: no full-screen
+   backdrop, no target highlighting, no measurement polling. Replaces an
+   earlier spotlight-tour implementation that a user reported repeatedly,
+   reproducibly vanishing within about a second of load on their machine —
+   never reproduced despite direct instrumentation (global error/rejection
+   handlers, explicit call-site logging) ruling out an uncaught exception
+   or the dismiss handler firing unexpectedly. Rather than keep chasing a
+   machine-specific rendering issue blind, this has far less that can go
+   wrong. Classes avoid "tour"/"overlay"/"popup"/"modal" since generic
+   ad-blocker cosmetic filters were separately confirmed to strip class
+   names like that in at least one real case. */
 
-.umbra-guide-layer {
+.umbra-intro-card {
   position: fixed;
-  inset: 0;
+  left: 18px;
+  bottom: 18px;
   z-index: 40;
-  pointer-events: none;
-}
-
-.umbra-guide-highlight {
-  position: fixed;
-  border-radius: 6px;
-  /* A lighter backdrop than the original 0.78 alpha — that read as the rest
-     of the app going dim/broken rather than one area being highlighted.
-     The hard 1px outline is replaced with a soft glow for the same reason:
-     a thin line sitting exactly on the rail/map boundary looked like a
-     misplaced scrollbar rather than an intentional highlight. */
-  box-shadow: 0 0 0 9999px rgba(3, 4, 6, 0.42), 0 0 0 2px var(--accent-dim), 0 0 20px 2px rgba(111, 224, 201, 0.2);
-  pointer-events: none;
-  transition: top 0.25s ease, left 0.25s ease, width 0.25s ease, height 0.25s ease;
-}
-
-.umbra-guide-card {
-  position: fixed;
+  width: 300px;
   background: var(--panel-raised);
   border: 1px solid var(--accent-dim);
   padding: 16px;
-  pointer-events: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
-.umbra-guide-step {
+.umbra-intro-step {
   font-family: var(--font-mono);
   font-size: 10px;
   color: var(--text-muted);
@@ -187,7 +176,7 @@
   margin-bottom: 8px;
 }
 
-.umbra-guide-card h3 {
+.umbra-intro-card h3 {
   margin: 0 0 8px;
   font-family: var(--font-display);
   font-weight: 600;
@@ -195,22 +184,18 @@
   color: var(--text-primary);
 }
 
-.umbra-guide-card p {
+.umbra-intro-card p {
   margin: 0 0 14px;
   font-size: 12.5px;
   line-height: 1.55;
   color: var(--text-secondary);
 }
 
-.umbra-guide-actions {
+.umbra-intro-actions {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .umbra-guide-highlight, .umbra-guide-card { animation: none !important; transition: none !important; }
 }
 
 /* ---------- Buttons / generic controls ---------- */
@@ -986,6 +971,21 @@ details[open] > .dock-heading--clickable .details-chevron {
   color: var(--day);
   font-family: var(--font-display);
   font-weight: 600;
+}
+
+.error-fallback-detail {
+  max-width: 640px;
+  max-height: 40vh;
+  overflow: auto;
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--panel-raised);
+  border: 1px solid var(--line-strong);
+  padding: 12px;
 }
 
 .error-fallback button {

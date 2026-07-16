@@ -121,7 +121,7 @@ export function TelemetryRail({
   const earthTrips = totalDistanceKm / EARTH_CIRCUMFERENCE_KM;
 
   return (
-    <aside className="rail" data-tour="rail">
+    <aside className="rail">
       <div className="hud-card rail-card rail-card--hero">
         <div className="orbit-dial">
           <svg viewBox="0 0 108 108" width="108" height="108">
