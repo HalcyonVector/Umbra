@@ -21,5 +21,8 @@ export function formatDurationShort(deltaMs: number): string {
   if (minutes < 60) return seconds > 0 ? `${minutes}m ${String(seconds).padStart(2, '0')}s` : `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   const remMinutes = minutes % 60;
-  return `${hours}h ${String(remMinutes).padStart(2, '0')}m`;
+  if (hours < 24) return `${hours}h ${String(remMinutes).padStart(2, '0')}m`;
+  const days = Math.floor(hours / 24);
+  const remHours = hours % 24;
+  return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
 }

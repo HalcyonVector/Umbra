@@ -940,8 +940,6 @@ button.ghost:hover {
   flex-shrink: 0;
 }
 
-.manifest-dot.day { background: var(--day); box-shadow: 0 0 5px 1px rgba(242, 177, 85, 0.4); }
-.manifest-dot.night { background: var(--night); box-shadow: 0 0 5px 1px rgba(124, 147, 224, 0.4); }
 .manifest-dot.pass { background: var(--accent); box-shadow: 0 0 5px 1px var(--accent-glow); }
 
 .manifest-row--notable {

@@ -45,6 +45,14 @@ describe('formatDurationShort', () => {
     expect(formatDurationShort(65 * 60_000)).toBe('1h 05m');
   });
 
+  it('reads days and hours beyond a day', () => {
+    expect(formatDurationShort(3 * 86_400_000 + 4 * 3_600_000)).toBe('3d 4h');
+  });
+
+  it('omits hours when exactly on the day', () => {
+    expect(formatDurationShort(2 * 86_400_000)).toBe('2d');
+  });
+
   it('clamps negative durations to 0', () => {
     expect(formatDurationShort(-5000)).toBe('0s');
   });

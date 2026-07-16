@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { isNotablePass, type PassPrediction, type CrossingPrediction, type LocalTwilightTransition } from '../orbital/eventPrediction';
+import { isNotablePass, type PassPrediction, type LocalTwilightTransition } from '../orbital/eventPrediction';
 import { formatDurationShort } from '../lib/formatTime';
 import { SkyPlot } from './SkyPlot';
 
@@ -11,7 +11,11 @@ interface PredictorDockProps {
   minElevationDeg: number;
   onMinElevationChange: (v: number) => void;
   passes: PassPrediction[];
-  crossings: CrossingPrediction[];
+  /** The next actually-visible pass beyond the normal 24h window, only set
+   * when `passes` is empty — a real, correct state (the observer's local
+   * darkness and the ISS being lit and overhead doesn't align every day),
+   * but worth surfacing something concrete instead of a dead end. */
+  fallbackNextPass: PassPrediction | null;
   telemetryReady: boolean;
   nowMs: number;
   geolocationStatus: GeolocationStatus;
@@ -19,16 +23,6 @@ interface PredictorDockProps {
   closestApproachKm: number | null;
   localTwilightTransition: LocalTwilightTransition | null;
   goldenWindowCountry: string | null;
-}
-
-type ManifestEntry =
-  | { kind: 'pass'; atMs: number; pass: PassPrediction }
-  | { kind: 'sunrise' | 'sunset'; atMs: number };
-
-function buildManifest(passes: PassPrediction[], crossings: CrossingPrediction[]): ManifestEntry[] {
-  const passEntries: ManifestEntry[] = passes.map((p) => ({ kind: 'pass', atMs: p.startMs, pass: p }));
-  const crossingEntries: ManifestEntry[] = crossings.map((c) => ({ kind: c.direction, atMs: c.atMs }));
-  return [...passEntries, ...crossingEntries].sort((a, b) => a.atMs - b.atMs);
 }
 
 function fillVar(value: number, min: number, max: number): CSSProperties {
@@ -97,7 +91,7 @@ const GEO_STATUS_LABEL: Record<GeolocationStatus, string | null> = {
 /** The permanent right dock: where you're watching from, the sky-plot for the next pass, and what's coming up. */
 export function PredictorDock({
   observer, onSetObserver, minElevationDeg, onMinElevationChange,
-  passes, crossings, telemetryReady, nowMs,
+  passes, fallbackNextPass, telemetryReady, nowMs,
   geolocationStatus, onUseMyLocation,
   closestApproachKm, localTwilightTransition, goldenWindowCountry,
 }: PredictorDockProps) {
@@ -114,7 +108,7 @@ export function PredictorDock({
 
   const geoMessage = GEO_STATUS_LABEL[geolocationStatus];
   const nextPass = passes[0] ?? null;
-  const manifest = buildManifest(passes, crossings).slice(0, 6);
+  const manifest = passes.slice(0, 6);
 
   return (
     <aside className="dock">
@@ -129,6 +123,13 @@ export function PredictorDock({
               {fmtTime(nextPass.startMs)} local &middot; {formatDurationShort(nextPass.endMs - nextPass.startMs)} visible &middot; peak {Math.round(nextPass.peakElevationDeg)}°
             </span>
           </div>
+        ) : fallbackNextPass ? (
+          <div className="next-pass">
+            <span className="next-pass-eta num">{formatDurationShort(fallbackNextPass.startMs - nowMs)}</span>
+            <span className="next-pass-meta">
+              Nothing in the next 24 hours from here. Next good one: {fmtTime(fallbackNextPass.startMs)} local &middot; peak {Math.round(fallbackNextPass.peakElevationDeg)}°
+            </span>
+          </div>
         ) : (
           <div className="next-pass">
             <span className="next-pass-meta">
@@ -136,7 +137,7 @@ export function PredictorDock({
                 ? 'Set a location below to predict visible passes.'
                 : !telemetryReady
                   ? 'Waiting for live ISS telemetry to derive an orbit…'
-                  : 'No passes bright enough in the next 24 hours from here.'}
+                  : 'No passes bright enough in the next 10 days from here.'}
             </span>
           </div>
         )}
@@ -153,7 +154,7 @@ export function PredictorDock({
 
       <div className="dock-section hud-card">
         <div className="dock-heading">Sky chart</div>
-        <SkyPlot pass={nextPass} />
+        <SkyPlot pass={nextPass ?? fallbackNextPass} />
       </div>
 
       <div className="dock-section hud-card">
@@ -218,27 +219,33 @@ export function PredictorDock({
         <div className="dock-heading" style={{ marginBottom: 6 }}>Manifest</div>
         {!telemetryReady ? (
           <p className="hud-note">Waiting for live ISS telemetry to derive an orbit…</p>
-        ) : manifest.length === 0 ? (
+        ) : manifest.length === 0 && !fallbackNextPass ? (
           <p className="hud-note">Nothing upcoming in the prediction window.</p>
+        ) : manifest.length === 0 && fallbackNextPass ? (
+          <div className="manifest">
+            <div className="manifest-row">
+              <span className="manifest-kind">
+                <span className="manifest-dot pass"></span>
+                Next good pass (beyond 24h)
+              </span>
+              <span className="manifest-time num">in {formatDurationShort(fallbackNextPass.startMs - nowMs)}</span>
+            </div>
+          </div>
         ) : (
           <div className="manifest">
-            {manifest.map((entry) => {
-              const notable = entry.kind === 'pass' && isNotablePass(entry.pass);
+            {manifest.map((pass) => {
+              const notable = isNotablePass(pass);
               return (
-                <div className={`manifest-row${notable ? ' manifest-row--notable' : ''}`} key={`${entry.kind}-${entry.atMs}`}>
+                <div className={`manifest-row${notable ? ' manifest-row--notable' : ''}`} key={pass.startMs}>
                   <span className="manifest-kind">
                     {notable ? (
                       <span className="manifest-dot manifest-dot--star"><IconStar /></span>
                     ) : (
-                      <span className={`manifest-dot ${entry.kind === 'pass' ? 'pass' : entry.kind === 'sunrise' ? 'day' : 'night'}`}></span>
+                      <span className="manifest-dot pass"></span>
                     )}
-                    {entry.kind === 'pass'
-                      ? notable
-                        ? `Great pass · ${Math.round(entry.pass.peakElevationDeg)}° peak`
-                        : 'Visible pass'
-                      : entry.kind === 'sunrise' ? 'Sunrise' : 'Sunset'}
+                    {notable ? `Great pass · ${Math.round(pass.peakElevationDeg)}° peak` : 'Visible pass'}
                   </span>
-                  <span className="manifest-time num">in {formatDurationShort(entry.atMs - nowMs)}</span>
+                  <span className="manifest-time num">in {formatDurationShort(pass.startMs - nowMs)}</span>
                 </div>
               );
             })}

@@ -10,7 +10,7 @@ import { ISS_MEAN_ALTITUDE_KM, orbitalPhase as fallbackOrbitalPhase, groundSpeed
 import { computeGroundSpeedKmh, computeBearingDeg, pruneTrail, type TrackPoint } from './orbital/groundTrack';
 import { findCountryAt, computeBBox, type CountryFeature, type CountryGeometry } from './orbital/countryLookup';
 import { deriveOrbitalElements, propagateSubSatellitePoint, orbitalPhaseAt, type OrbitalElements } from './orbital/groundTrackPropagator';
-import { predictTerminatorCrossings, predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow } from './orbital/eventPrediction';
+import { predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow } from './orbital/eventPrediction';
 import { slantRangeKm } from './orbital/visibility';
 import { haversineDistanceKm } from './orbital/greatCircle';
 import { loadTrail, saveTrail } from './lib/trailStore';
@@ -29,8 +29,8 @@ import type { OrbitalTelemetry, SolarState } from './types';
 import './App.css';
 
 const TRAIL_RETENTION_MS = 24 * 60 * 60_000;
-const CROSSING_WINDOW_MS = 6 * 60 * 60_000;
 const PASS_WINDOW_MS = 24 * 60 * 60_000;
+const FALLBACK_PASS_WINDOW_MS = 10 * 24 * 60 * 60_000;
 const PREDICTED_TRAIL_HORIZON_MS = 3 * 60 * 60_000;
 const PREDICTED_TRAIL_STEP_MS = 2 * 60_000;
 const TWILIGHT_BAND_DEG = 8;
@@ -285,12 +285,6 @@ export default function App() {
   // Expensive multi-hour walks only re-run when the orbital elements
   // themselves change (roughly once per ~5-8s poll); filtering the results
   // down to "still upcoming" against the ticking clock is cheap.
-  const predictedCrossings = useMemo(
-    () => (orbitalElements ? predictTerminatorCrossings(orbitalElements, orbitalElements.epochMs, CROSSING_WINDOW_MS) : []),
-    [orbitalElements],
-  );
-  const upcomingCrossings = useMemo(() => predictedCrossings.filter((c) => c.atMs > nowMs), [predictedCrossings, nowMs]);
-
   const predictedPasses = useMemo(
     () =>
       orbitalElements && observer
@@ -300,6 +294,35 @@ export default function App() {
   );
   const upcomingPasses = useMemo(() => predictedPasses.filter((p) => p.endMs > nowMs), [predictedPasses, nowMs]);
 
+  // The map's night-mask and a couple of other multi-minute-horizon
+  // predictions below don't need sub-minute precision, so they recompute on
+  // this minute cadence rather than every tick or every live telemetry poll.
+  const minuteKey = Math.floor(nowMs / 60_000);
+
+  // Genuinely zero visible passes in the next 24h happens for real (the
+  // observer's local darkness has to overlap the ISS being both overhead
+  // and sunlit, which doesn't align every day) — rather than dead-ending on
+  // "nothing", search much further out for the actual next good pass. Only
+  // runs the expensive extended walk when the 24h window is truly empty.
+  // Keyed on minuteKey rather than `orbitalElements` itself: elements get a
+  // fresh object identity on every live position poll (~every 5-8s), which
+  // would otherwise re-run this 10-day/57k-step search that often forever
+  // while stuck in the no-passes state — a real, measured multi-second
+  // main-thread stall, not just a theoretical one. A minute of staleness on
+  // a 10-day-horizon search is a non-issue.
+  const extendedPasses = useMemo(() => {
+    if (!orbitalElements || !observer || upcomingPasses.length > 0) return [];
+    return predictVisiblePasses(
+      orbitalElements, observer.lat, observer.lon, ISS_MEAN_ALTITUDE_KM,
+      orbitalElements.epochMs, FALLBACK_PASS_WINDOW_MS, { minElevationDeg },
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [observer?.lat, observer?.lon, minElevationDeg, upcomingPasses.length, minuteKey]);
+  const fallbackNextPass = useMemo(
+    () => extendedPasses.find((p) => p.endMs > nowMs) ?? null,
+    [extendedPasses, nowMs],
+  );
+
   const predictedTrail = useMemo(() => {
     if (!orbitalElements) return [];
     const points = [];
@@ -308,11 +331,6 @@ export default function App() {
     }
     return points;
   }, [orbitalElements]);
-
-  // Both of these are cheap but not free (a 24-point ring scan; a bisected
-  // time-walk) and don't need sub-minute precision, so they're recomputed on
-  // the same minute cadence as the map's night-mask rather than every tick.
-  const minuteKey = Math.floor(nowMs / 60_000);
 
   const localTwilightTransition = useMemo(
     () => (observer ? predictLocalTwilightTransition(observer.lat, observer.lon, nowMs) : null),
@@ -393,7 +411,7 @@ export default function App() {
           minElevationDeg={minElevationDeg}
           onMinElevationChange={handleMinElevationChange}
           passes={upcomingPasses}
-          crossings={upcomingCrossings}
+          fallbackNextPass={fallbackNextPass}
           telemetryReady={orbitalElements !== null}
           nowMs={nowMs}
           geolocationStatus={geolocationStatus}
