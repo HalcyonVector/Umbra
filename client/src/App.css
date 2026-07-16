@@ -145,20 +145,21 @@
 /* ---------- Intro card ---------- */
 /* Deliberately as simple as a fixed-position card can be: no full-screen
    backdrop, no target highlighting, no measurement polling. Replaces an
-   earlier spotlight-tour implementation that a user reported repeatedly,
-   reproducibly vanishing within about a second of load on their machine —
-   never reproduced despite direct instrumentation (global error/rejection
-   handlers, explicit call-site logging) ruling out an uncaught exception
-   or the dismiss handler firing unexpectedly. Rather than keep chasing a
-   machine-specific rendering issue blind, this has far less that can go
-   wrong. Classes avoid "tour"/"overlay"/"popup"/"modal" since generic
-   ad-blocker cosmetic filters were separately confirmed to strip class
-   names like that in at least one real case. */
+   earlier spotlight-tour implementation that turned out to be getting
+   painted over by Leaflet's own internal panes (z-index up to 700)
+   wherever it overlapped the map — .map-viewport had `position: relative`
+   but no z-index of its own, so it never contained those values in a
+   stacking context; see the fix on .map-viewport above. Centered rather
+   than corner-anchored so it never sits over the map at all. Classes
+   avoid "tour"/"overlay"/"popup"/"modal" since generic ad-blocker
+   cosmetic filters were separately confirmed to strip class names like
+   that in at least one real case. */
 
 .umbra-intro-card {
   position: fixed;
-  left: 18px;
-  bottom: 18px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   z-index: 40;
   width: 300px;
   background: var(--panel-raised);
@@ -490,6 +491,17 @@ button.ghost:hover {
 
 .map-viewport {
   position: relative;
+  /* Leaflet's own panes are positioned children with z-index up to 700
+     (tiles at 200, markers at 600, popups at 700). `position: relative`
+     alone does NOT create a new stacking context — without an explicit
+     z-index here too, those values compare directly against any other
+     positioned element on the page in the same ambient stacking context
+     (e.g. the intro card's z-index: 40), and win, painting map tiles
+     straight over anything that visually overlaps the map. This was the
+     actual cause of the intro card appearing to vanish/flicker wherever
+     it overlapped the map: not a bug in the card, a missing stacking
+     context around Leaflet's own layers. */
+  z-index: 0;
   overflow: hidden;
   min-height: 0;
   background: var(--ground);
