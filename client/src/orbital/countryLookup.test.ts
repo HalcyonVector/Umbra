@@ -31,6 +31,40 @@ describe('pointInRing', () => {
   });
 });
 
+// A compact rectangle straddling the antimeridian, in the same style as
+// Fiji's real second polygon part: raw coordinates jump from 178 to -179
+// between consecutive vertices, describing a small region actually
+// centered near the dateline (178E to 179W, lat -19 to -16) rather than
+// spanning the globe.
+const DATELINE_RING: [number, number][] = [
+  [178, -19],
+  [-179, -19],
+  [-179, -16],
+  [178, -16],
+  [178, -19],
+];
+
+describe('pointInRing (antimeridian-crossing ring)', () => {
+  it('matches a point just east of the dateline, inside the ring', () => {
+    expect(pointInRing(179, -17.5, DATELINE_RING)).toBe(true);
+  });
+
+  it('matches the same real-world area expressed just west of the dateline', () => {
+    expect(pointInRing(-179.5, -17.5, DATELINE_RING)).toBe(true);
+  });
+
+  it('does not match a point far away at an unrelated longitude', () => {
+    // Regression: a naive raw-coordinate ray-cast treats the 178 -> -179
+    // vertex jump as a near-global edge, which was confirmed to make Fiji's
+    // real geometry falsely match points over South America.
+    expect(pointInRing(-75, -17, DATELINE_RING)).toBe(false);
+  });
+
+  it('rejects a point at the right longitude but outside the ring band', () => {
+    expect(pointInRing(179, 10, DATELINE_RING)).toBe(false);
+  });
+});
+
 describe('pointInPolygon', () => {
   it('excludes points inside a hole', () => {
     expect(pointInPolygon(5, 5, [SQUARE, HOLE])).toBe(false);

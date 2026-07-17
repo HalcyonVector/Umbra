@@ -14,13 +14,42 @@ export interface CountryFeature {
   bbox: [number, number, number, number];
 }
 
-/** Standard ray-casting point-in-polygon test against a single ring (works for the outer ring; a point "inside" a hole ring is treated as inside the hole, so callers XOR outer/hole results — see pointInPolygon). */
+/**
+ * Standard ray-casting point-in-polygon test against a single ring (works
+ * for the outer ring; a point "inside" a hole ring is treated as inside the
+ * hole, so callers XOR outer/hole results — see pointInPolygon).
+ *
+ * Rings that cross the antimeridian (Fiji, Russia's far-east lobe, etc.)
+ * store raw coordinates that jump from ~180 to ~-180 between consecutive
+ * vertices. Interpreted literally, that edge spans nearly the entire globe
+ * the wrong way around: confirmed to produce false-positive matches at
+ * totally unrelated longitudes (a point over Peru was matching "Fiji").
+ * Unwrapping this ring's own longitude sequence, then testing the query
+ * point against whichever +-360 equivalent lands nearest this ring's own
+ * coordinates, fixes that without touching how rings are stored elsewhere
+ * (bbox included — computeBBox is a separate, cheap pre-filter, and an
+ * over-wide bbox for a dateline-crossing ring just means this precise test
+ * runs a bit more often, not that it can return a wrong answer).
+ */
 export function pointInRing(lon: number, lat: number, ring: Ring): boolean {
+  if (ring.length === 0) return false;
+
+  const unwrapped: Ring = [ring[0]];
+  let offset = 0;
+  for (let i = 1; i < ring.length; i++) {
+    const delta = ring[i][0] - ring[i - 1][0];
+    if (delta > 180) offset -= 360;
+    else if (delta < -180) offset += 360;
+    unwrapped.push([ring[i][0] + offset, ring[i][1]]);
+  }
+  const referenceLon = unwrapped[0][0];
+  const testLon = lon + Math.round((referenceLon - lon) / 360) * 360;
+
   let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    const intersects = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+  for (let i = 0, j = unwrapped.length - 1; i < unwrapped.length; j = i++) {
+    const [xi, yi] = unwrapped[i];
+    const [xj, yj] = unwrapped[j];
+    const intersects = yi > lat !== yj > lat && testLon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
     if (intersects) inside = !inside;
   }
   return inside;
