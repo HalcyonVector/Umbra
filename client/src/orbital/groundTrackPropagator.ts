@@ -1,11 +1,38 @@
 import { toRadians, toDegrees, normalizeDeg180 } from './greatCircle';
-import { ISS_MEAN_PERIOD_MIN } from './orbitalMechanics';
+import { GM_EARTH_KM3_S2, ISS_MEAN_PERIOD_MIN } from './orbitalMechanics';
 
 /** The ISS's real orbital inclination, not derivable from a single Open Notify fix, so it's a cited constant like altitude. */
 export const ISS_INCLINATION_DEG = 51.6;
 
 const SIDEREAL_DAY_MS = 86_164_090.5; // 86164.0905s, one Earth rotation relative to the stars, not the 24h solar day
 const EARTH_ROTATION_DEG_PER_MS = 360 / SIDEREAL_DAY_MS;
+
+// Earth's oblateness coefficient and equatorial radius (WGS-84), the inputs
+// to the standard first-order J2 nodal precession formula below.
+const J2 = 1.08262668e-3;
+const EARTH_EQUATORIAL_RADIUS_KM = 6378.137;
+const MS_PER_DAY = 86_400_000;
+
+/**
+ * How fast the orbit's plane swings around Earth's axis because of the
+ * equatorial bulge (J2 nodal precession), in degrees per day:
+ *
+ *   dOmega/dt = -3/2 * n * J2 * (Re/a)^2 * cos(i)
+ *
+ * About -5 deg/day for the ISS. Small next to Earth's rotation, but it is
+ * what makes visible-pass "seasons" come and go: without it the ground
+ * track lines up with the observer's dusk or dawn at almost the same times
+ * every day, so a location that has no passes today would wrongly have
+ * none for weeks.
+ */
+export function nodalPrecessionDegPerDay(inclinationDeg: number, periodMinutes: number): number {
+  const periodS = periodMinutes * 60;
+  const meanMotionRadS = (2 * Math.PI) / periodS;
+  const semiMajorAxisKm = Math.cbrt((GM_EARTH_KM3_S2 * periodS * periodS) / (4 * Math.PI * Math.PI));
+  const ratio = EARTH_EQUATORIAL_RADIUS_KM / semiMajorAxisKm;
+  const rateRadS = -1.5 * meanMotionRadS * J2 * ratio * ratio * Math.cos(toRadians(inclinationDeg));
+  return toDegrees(rateRadS) * 86_400;
+}
 
 export interface LatLon {
   lat: number;
@@ -69,15 +96,12 @@ export function deriveOrbitalElements(
  * time from a set of orbital elements. Models a satellite moving at a
  * constant angular rate around an inclined great circle, with that great
  * circle's Earth-fixed ascending-node longitude drifting westward at
- * Earth's sidereal rotation rate, which is exactly right for a
- * non-precessing circular orbit around a rotating Earth.
+ * Earth's sidereal rotation rate plus J2 nodal precession (see
+ * nodalPrecessionDegPerDay).
  *
- * Deliberately NOT modeled (all real, small-to-moderate effects):
+ * Deliberately NOT modeled (real, small effects):
  *  - Atmospheric drag (the ISS's real altitude and period slowly decay
  *    between reboosts).
- *  - J2 (Earth's equatorial bulge) nodal precession, for the ISS this is
- *    roughly -5deg/day, small next to the ~360deg/day rotation term this
- *    function does model, but not zero.
  *  - Orbital eccentricity (the ISS's real orbit is very nearly but not
  *    exactly circular).
  *
@@ -90,7 +114,8 @@ export function propagateSubSatellitePoint(elements: OrbitalElements, atMs: numb
   const periodMs = elements.periodMinutes * 60_000;
 
   const uRad = toRadians(elements.argumentOfLatitudeDeg + (360 / periodMs) * dtMs);
-  const ascendingNodeLonDeg = elements.ascendingNodeLonDeg - EARTH_ROTATION_DEG_PER_MS * dtMs;
+  const precessionDegPerMs = nodalPrecessionDegPerDay(elements.inclinationDeg, elements.periodMinutes) / MS_PER_DAY;
+  const ascendingNodeLonDeg = elements.ascendingNodeLonDeg + (precessionDegPerMs - EARTH_ROTATION_DEG_PER_MS) * dtMs;
 
   const lat = toDegrees(Math.asin(Math.sin(i) * Math.sin(uRad)));
   const deltaLambdaDeg = toDegrees(Math.atan2(Math.cos(i) * Math.sin(uRad), Math.cos(uRad)));

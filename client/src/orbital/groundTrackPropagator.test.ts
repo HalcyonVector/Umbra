@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveOrbitalElements, propagateSubSatellitePoint, orbitalPhaseAt, ISS_INCLINATION_DEG, type OrbitalElements } from './groundTrackPropagator';
+import { deriveOrbitalElements, propagateSubSatellitePoint, orbitalPhaseAt, nodalPrecessionDegPerDay, ISS_INCLINATION_DEG, type OrbitalElements } from './groundTrackPropagator';
 import { initialBearingDeg } from './greatCircle';
 import { ISS_MEAN_PERIOD_MIN } from './orbitalMechanics';
 
@@ -133,5 +133,35 @@ describe('orbitalPhaseAt', () => {
       expect(phase).toBeGreaterThanOrEqual(0);
       expect(phase).toBeLessThan(1);
     }
+  });
+});
+
+describe('nodalPrecessionDegPerDay', () => {
+  it('reproduces the ISS\'s real ~-5 degrees/day nodal regression', () => {
+    const rate = nodalPrecessionDegPerDay(ISS_INCLINATION_DEG, ISS_MEAN_PERIOD_MIN);
+    expect(rate).toBeLessThan(-4.8);
+    expect(rate).toBeGreaterThan(-5.2);
+  });
+
+  it('is zero for a polar orbit and prograde-negative / retrograde-positive otherwise', () => {
+    expect(nodalPrecessionDegPerDay(90, ISS_MEAN_PERIOD_MIN)).toBeCloseTo(0, 9);
+    expect(nodalPrecessionDegPerDay(98, ISS_MEAN_PERIOD_MIN)).toBeGreaterThan(0);
+  });
+
+  it('shifts where the ground track crosses the equator by about 5 degrees after one day', () => {
+    const elements: OrbitalElements = {
+      inclinationDeg: ISS_INCLINATION_DEG, periodMinutes: ISS_MEAN_PERIOD_MIN,
+      ascendingNodeLonDeg: 0, argumentOfLatitudeDeg: 0, epochMs: EPOCH,
+    };
+    // After exactly N orbits the satellite is back at its ascending node;
+    // the node's Earth-fixed longitude has moved by rotation + precession.
+    const orbits = 16;
+    const dtMs = orbits * ISS_MEAN_PERIOD_MIN * 60_000;
+    const p = propagateSubSatellitePoint(elements, EPOCH + dtMs);
+    const rotationOnly = -(360 / 86_164_090.5) * dtMs;
+    const precession = nodalPrecessionDegPerDay(ISS_INCLINATION_DEG, ISS_MEAN_PERIOD_MIN) * (dtMs / 86_400_000);
+    const expected = ((((rotationOnly + precession) + 180) % 360) + 360) % 360 - 180;
+    expect(p.lat).toBeCloseTo(0, 6);
+    expect(p.lon).toBeCloseTo(expected, 6);
   });
 });
