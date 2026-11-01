@@ -2,6 +2,8 @@
 
 **A live International Space Station tracker that tells you when you can see it with your own eyes.**
 
+**Live demo:** [umbra-0nnj.onrender.com](https://umbra-0nnj.onrender.com/) (free hosting, so the first load after a quiet spell can take up to a minute)
+
 Umbra shows where the ISS is right now on a real world map, who is on board, and when it will next pass over you bright enough to spot without a telescope. Each pass comes with a sky chart showing which direction to face, how high it climbs, and where it disappears.
 
 ## Features
