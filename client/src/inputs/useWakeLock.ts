@@ -4,7 +4,7 @@ import { useEffect, useRef } from 'react';
  * Requests a screen wake lock while `active` is true so the device doesn't
  * sleep mid-session, and re-acquires it if the tab regains visibility
  * (the OS releases wake locks when a tab is backgrounded). Silently no-ops
- * on browsers without the API — it's a nice-to-have, not required.
+ * on browsers without the API, it's a nice-to-have, not required.
  */
 export function useWakeLock(active: boolean) {
   const lockRef = useRef<WakeLockSentinel | null>(null);

@@ -4,15 +4,13 @@ import type { AstrosFeedResponse, CrewMember } from '../types';
 const POLL_MS = 5 * 60_000; // who's in space changes on the order of days, not seconds
 
 /**
- * Polls the server's Open Notify proxy (GET /api/astros) for the current
- * space-station census. Deliberately slow — this is the input the
- * "one drone layer per person in space" mapping (orbital/crewCensus.ts)
- * reads from, and it has no reason to poll any faster than the crew
- * manifest itself changes.
+ * Polls the server's crew census (GET /api/astros). Deliberately slow: the
+ * roster only changes when a crew launches or lands.
  */
 export function useCrewFeed(pollMs: number = POLL_MS) {
   const [count, setCount] = useState<number | null>(null);
   const [people, setPeople] = useState<CrewMember[]>([]);
+  const [expedition, setExpedition] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
@@ -27,6 +25,7 @@ export function useCrewFeed(pollMs: number = POLL_MS) {
         if (cancelledRef.current) return;
         setCount(data.count);
         setPeople(data.people);
+        setExpedition(data.expedition ?? null);
         setError(null);
       } catch (err) {
         if (!cancelledRef.current) setError(err instanceof Error ? err.message : 'astros feed fetch failed');
@@ -41,5 +40,5 @@ export function useCrewFeed(pollMs: number = POLL_MS) {
     };
   }, [pollMs]);
 
-  return { count, people, error };
+  return { count, people, expedition, error };
 }

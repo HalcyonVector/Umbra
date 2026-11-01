@@ -7,20 +7,20 @@ interface IntroStep {
 
 const STEPS: IntroStep[] = [
   {
-    title: 'A real, live map',
-    body: "Tracks the ISS's actual position. Drag to look around, scroll or pinch to zoom. It's a real map, not an illustration.",
+    title: 'Where the ISS is, right now',
+    body: 'The glowing marker is the station, live. The faint line behind it is where it has been, the dotted line is where it goes in the next 3 hours, and the shaded half of the map is night.',
   },
   {
-    title: 'Mission stats',
-    body: 'The left panel builds up the longer you leave this open: distance flown, countries overflown, orbit count, and which country is being overflown right now.',
-  },
-  {
-    title: 'Visibility predictor',
-    body: "Set your location in the right panel to find out exactly when it'll be bright enough to spot overhead. Real orbital mechanics and solar geometry, not a guess.",
+    title: 'Can I see it tonight?',
+    body: 'Set your location in the passes panel (use your device location or click the map). Umbra predicts when the station will be sunlit while your sky is dark, which is when you can see it with your own eyes.',
   },
   {
     title: 'Know where to look',
-    body: 'Every predicted pass gets a real rise-to-set sky chart. Watch too for the "golden window" banner: it flags the single best place on Earth to look up, right now.',
+    body: 'Every pass comes with a sky chart: which direction it rises from, how high it climbs, and where it sets. No telescope needed, it looks like a bright, steady star moving fast.',
+  },
+  {
+    title: 'Leave it open',
+    body: 'The longer the tab stays open, the more it records: distance flown, countries crossed, sunrises and sunsets. The track you have seen is kept between visits.',
   },
 ];
 
@@ -28,24 +28,7 @@ interface IntroCardProps {
   onFinish: () => void;
 }
 
-/**
- * A plain, first-visit-only intro card — deliberately as simple as
- * possible. This replaces an earlier spotlight-tour implementation
- * (per-target getBoundingClientRect tracking, a 400ms measurement poll, a
- * resize listener, a full-viewport dimmed backdrop) that a user reported
- * repeatedly, reproducibly vanishing within about a second of load on
- * their machine — a failure mode never reproduced in any of this
- * project's own testing across multiple rounds of direct instrumentation
- * (global error/rejection handlers, explicit call-site logging), ruling
- * out an uncaught exception or the dismiss handler firing unexpectedly.
- * Rather than keep chasing a machine-specific rendering issue blind,
- * this trades the spotlight/highlight novelty for a design with far less
- * that can go wrong: no polling, no target measurement, no backdrop, no
- * dependency on any other element's layout — just a small fixed card
- * advanced by explicit clicks. Named umbra-intro-* (not tour/overlay/
- * popup/modal) since generic ad-blocker cosmetic filters were separately
- * confirmed to strip class names like that in at least one real case.
- */
+/** A small first-visit walkthrough, advanced by explicit clicks. Reopen it any time from the help button. */
 export function IntroCard({ onFinish }: IntroCardProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex];
@@ -57,18 +40,20 @@ export function IntroCard({ onFinish }: IntroCardProps) {
   };
 
   return (
-    <div className="umbra-intro-card" role="dialog" aria-label="Welcome to Umbra">
-      <div className="umbra-intro-step">
-        {stepIndex + 1} / {STEPS.length}
+    <div className="umbra-intro-card glass" role="dialog" aria-label="Welcome to Umbra">
+      <div className="umbra-intro-progress" aria-label={`Step ${stepIndex + 1} of ${STEPS.length}`}>
+        {STEPS.map((_, i) => (
+          <span key={i} className={i <= stepIndex ? 'is-on' : ''} />
+        ))}
       </div>
       <h3>{step.title}</h3>
       <p>{step.body}</p>
       <div className="umbra-intro-actions">
-        <button className="ghost" onClick={onFinish}>
+        <button type="button" className="btn btn--ghost" onClick={onFinish}>
           Skip
         </button>
-        <button className="btn-console" onClick={next}>
-          {isLast ? 'Got it' : 'Next'}
+        <button type="button" className="btn btn--primary" onClick={next}>
+          {isLast ? 'Start tracking' : 'Next'}
         </button>
       </div>
     </div>

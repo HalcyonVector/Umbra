@@ -6,3 +6,6 @@ build/
 *.log
 .DS_Store
 *.tsbuildinfo
+
+# Local Claude Code settings
+.claude/

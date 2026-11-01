@@ -21,7 +21,10 @@ export function createApp() {
   app.get('/api/health', (_req, res) => res.json({ ok: true, time: new Date().toISOString() }));
 
   // In production, serve the built client (npm run build) as static assets.
-  app.use(express.static(CLIENT_DIST));
+  // Vite emits content-hashed filenames under /assets, so those can be
+  // cached forever; everything else (index.html, sw.js) must revalidate.
+  app.use('/assets', express.static(path.join(CLIENT_DIST, 'assets'), { maxAge: '1y', immutable: true }));
+  app.use(express.static(CLIENT_DIST, { maxAge: 0 }));
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api')) return next();
     res.sendFile(path.join(CLIENT_DIST, 'index.html'), (err) => {

@@ -5,7 +5,7 @@ import { solarDeclinationDeg, terminatorLatitudeDeg } from '../orbital/solarTerm
 import type { LatLonLike } from '../map/projection';
 
 // A real, fully-detailed basemap (roads, labels, borders, coastlines) via
-// Leaflet + CARTO's free "Dark Matter" tiles (built on OpenStreetMap data) —
+// Leaflet + CARTO's free "Dark Matter" tiles (built on OpenStreetMap data) -
 // no API key, no billing account required. The literal Google Maps API
 // needs a Google Cloud project with billing enabled, which only the account
 // owner can create; this is the closest free equivalent, and it's the same
@@ -15,14 +15,13 @@ const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>';
 
-const OBSERVED_TRAIL_COLOR = '#8fa3c9';
-const PREDICTED_TRAIL_COLOR = '#6fe0c9';
-const OBSERVER_COLOR = '#f2b155';
+const OBSERVED_TRAIL_COLOR = '#a5b4fc';
+const PREDICTED_TRAIL_COLOR = '#5eead4';
 const NIGHT_FILL = '#03050a';
 
 // The observed ("living cartography") trail renders as this many discrete
 // polyline segments instead of one dashed line, each a little more opaque
-// than the last toward the ISS's current position — a fading trail reads
+// than the last toward the ISS's current position, a fading trail reads
 // clearly as "recent path" at a glance, where a uniform dotted line (the
 // previous approach) all but disappeared against a real map's own detail.
 const OBSERVED_TRAIL_SEGMENTS = 20;
@@ -31,7 +30,7 @@ const OBSERVED_TRAIL_MAX_OPACITY = 0.85;
 
 /**
  * Converts a chronological lat/lon trail into a continuous (unwrapped)
- * longitude sequence — Leaflet, like any Mercator map, expects consecutive
+ * longitude sequence, Leaflet, like any Mercator map, expects consecutive
  * points that actually cross the antimeridian to keep going past +-180deg
  * rather than jumping straight from 179 to -179, or it draws a spurious line
  * all the way across the map. The ISS crosses the antimeridian roughly once
@@ -58,12 +57,12 @@ interface TrailSegment {
 /**
  * Leaflet's tile layer redraws seamlessly as you drag past +-180deg
  * (worldCopyJump), but plain vector layers (Marker, Polyline, Polygon) only
- * ever exist at the one longitude they were given — they don't get
+ * ever exist at the one longitude they were given, they don't get
  * duplicated into whichever "world copy" is currently in view. Left alone,
  * every custom layer on this map (the ISS marker, both trails, the observer
  * marker, the night-shading polygon) would appear to vanish the moment you
  * drag one world-width away from where they were last positioned, and
- * reappear/flicker as you drag back — exactly the "ghosting" and breakage
+ * reappear/flicker as you drag back, exactly the "ghosting" and breakage
  * this fixes. The remedy: whenever the map's own view shifts, re-anchor
  * every custom layer's longitude to the copy nearest the current view
  * center, shifting a whole shape by one consistent offset so it keeps its
@@ -104,7 +103,7 @@ function buildFadingSegments(unwrapped: [number, number][], count: number): Trai
 }
 
 // Leaflet's default CRS is also Web Mercator, which diverges at the true
-// poles — 85deg is the conventional safe edge (same bound Leaflet's own
+// poles, 85deg is the conventional safe edge (same bound Leaflet's own
 // examples use), well past the ISS's real +-51.6deg range.
 const POLAR_EDGE_LAT = 85;
 
@@ -129,35 +128,63 @@ interface MapSceneProps {
   predictedTrail: LatLonLike[];
   observer: LatLonLike | null;
   nowMs: number;
+  /** When true the map keeps the ISS centered; any manual drag turns it off. */
+  follow: boolean;
+  onFollowChange: (follow: boolean) => void;
+  /** When true, the next click on the map sets the observer location. */
+  pickMode: boolean;
+  onPick: (loc: { lat: number; lon: number }) => void;
 }
 
-// A radar-style pulsing halo around a solid dot — an HTML marker (not a
+function normalizeLon(lon: number) {
+  return ((((lon + 180) % 360) + 360) % 360) - 180;
+}
+
+// A radar-style pulsing halo around a solid dot, an HTML marker (not a
 // Leaflet CircleMarker) so it's a plain div, animatable with ordinary CSS
 // (see .iss-marker-icon in App.css) rather than fighting SVG presentation
 // attributes.
 const ISS_ICON = L.divIcon({
   className: 'iss-marker-icon',
-  html: '<span class="iss-halo"></span><span class="iss-dot"></span>',
+  html: '<span class="iss-halo"></span><span class="iss-dot"></span><span class="iss-tag">ISS</span>',
   iconSize: [22, 22],
   iconAnchor: [11, 11],
 });
 
+const OBSERVER_ICON = L.divIcon({
+  className: 'observer-marker-icon',
+  html: '<span class="observer-pin"></span><span class="observer-tag">You</span>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
 /**
- * The map is a real, standard tiled basemap (Leaflet + CARTO dark tiles) —
- * actual coastlines, borders, place names, at full cartographic fidelity —
+ * The map is a real, standard tiled basemap (Leaflet + CARTO dark tiles) -
+ * actual coastlines, borders, place names, at full cartographic fidelity -
  * with the ISS's live position (a pulsing marker), its growing "living
- * cartography" ground track (persisted across sessions — see
+ * cartography" ground track (persisted across sessions, see
  * lib/trailStore.ts) rendered as a trail that fades toward the past, a
  * dashed preview of where it's headed next, an observer marker, and a real
  * day/night terminator overlay layered on top. Pan and zoom are native
  * Leaflet behavior: drag in any direction, scroll/pinch to zoom, wraps
  * seamlessly around the antimeridian.
  */
-export function MapScene({ position, observedTrail, predictedTrail, observer, nowMs }: MapSceneProps) {
+export function MapScene({
+  position, observedTrail, predictedTrail, observer, nowMs,
+  follow, onFollowChange, pickMode, onPick,
+}: MapSceneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const issMarkerRef = useRef<L.Marker | null>(null);
-  const observerMarkerRef = useRef<L.CircleMarker | null>(null);
+  const observerMarkerRef = useRef<L.Marker | null>(null);
+  const followRef = useRef(follow);
+  const pickModeRef = useRef(pickMode);
+  const onFollowChangeRef = useRef(onFollowChange);
+  const onPickRef = useRef(onPick);
+  followRef.current = follow;
+  pickModeRef.current = pickMode;
+  onFollowChangeRef.current = onFollowChange;
+  onPickRef.current = onPick;
   const observedLineRefs = useRef<L.Polyline[]>([]);
   const predictedLineRef = useRef<L.Polyline | null>(null);
   const nightLayerRef = useRef<L.Polygon | null>(null);
@@ -179,9 +206,20 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
       worldCopyJump: true,
       minZoom: 2,
       maxZoom: 12,
-      zoomControl: true,
+      zoomControl: false,
       attributionControl: true,
+      zoomSnap: 0.5,
     }).setView([20, 0], 2);
+    map.attributionControl.setPrefix(false);
+
+    // A manual drag means the user wants to look somewhere else.
+    map.on('dragstart', () => {
+      if (followRef.current) onFollowChangeRef.current(false);
+    });
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      if (!pickModeRef.current) return;
+      onPickRef.current({ lat: Math.max(-85, Math.min(85, e.latlng.lat)), lon: normalizeLon(e.latlng.lng) });
+    });
 
     L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 }).addTo(map);
 
@@ -230,8 +268,17 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     if (!hasCenteredRef.current) {
       map.setView(latlng, 3);
       hasCenteredRef.current = true;
+    } else if (followRef.current) {
+      map.panTo(latlng, { animate: true, duration: 0.8 });
     }
   }, [position]);
+
+  // Turning follow back on snaps straight to the station.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !follow || !rawPositionRef.current) return;
+    map.setView(shiftLatLng(rawPositionRef.current, map.getCenter().lng), Math.max(map.getZoom(), 3), { animate: true });
+  }, [follow]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -244,13 +291,13 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     segments.forEach((seg, i) => {
       const latlngs = shiftLatLngs(seg.latlngs, referenceLon);
       if (!lines[i]) {
-        lines[i] = L.polyline(latlngs, { color: OBSERVED_TRAIL_COLOR, weight: 2, opacity: seg.opacity }).addTo(map);
+        lines[i] = L.polyline(latlngs, { color: OBSERVED_TRAIL_COLOR, weight: 2.2, opacity: seg.opacity, interactive: false }).addTo(map);
       } else {
         lines[i].setLatLngs(latlngs);
         lines[i].setStyle({ opacity: seg.opacity });
       }
     });
-    // Fewer segments than last time (e.g. trail was pruned) — drop the leftovers.
+    // Fewer segments than last time (e.g. trail was pruned), drop the leftovers.
     for (let i = segments.length; i < lines.length; i++) {
       map.removeLayer(lines[i]);
     }
@@ -264,7 +311,7 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     rawPredictedRef.current = raw;
     const latlngs = shiftLatLngs(raw, map.getCenter().lng);
     if (!predictedLineRef.current) {
-      predictedLineRef.current = L.polyline(latlngs, { color: PREDICTED_TRAIL_COLOR, weight: 2.4, dashArray: '5 5', opacity: 0.9 }).addTo(map);
+      predictedLineRef.current = L.polyline(latlngs, { color: PREDICTED_TRAIL_COLOR, weight: 2.2, dashArray: '2 7', lineCap: 'round', opacity: 0.95, interactive: false }).addTo(map);
     } else {
       predictedLineRef.current.setLatLngs(latlngs);
     }
@@ -277,19 +324,13 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     rawObserverRef.current = raw;
     const latlng = shiftLatLng(raw, map.getCenter().lng);
     if (!observerMarkerRef.current) {
-      observerMarkerRef.current = L.circleMarker(latlng, {
-        radius: 5,
-        color: '#060709',
-        weight: 1.5,
-        fillColor: OBSERVER_COLOR,
-        fillOpacity: 1,
-      }).addTo(map);
+      observerMarkerRef.current = L.marker(latlng, { icon: OBSERVER_ICON, interactive: false, keyboard: false }).addTo(map);
     } else {
       observerMarkerRef.current.setLatLng(latlng);
     }
   }, [observer]);
 
-  // The terminator moves slowly (~0.25deg/minute) — recomputing it on
+  // The terminator moves slowly (~0.25deg/minute), recomputing it on
   // minute granularity rather than every render tick keeps this cheap.
   const minuteKey = Math.floor(nowMs / 60_000);
   useEffect(() => {
@@ -299,19 +340,45 @@ export function MapScene({ position, observedTrail, predictedTrail, observer, no
     rawNightRef.current = raw;
     const latlngs = shiftLatLngs(raw, map.getCenter().lng);
     if (!nightLayerRef.current) {
-      nightLayerRef.current = L.polygon(latlngs, { color: 'transparent', weight: 0, fillColor: NIGHT_FILL, fillOpacity: 0.38 }).addTo(map);
+      nightLayerRef.current = L.polygon(latlngs, { color: 'transparent', weight: 0, fillColor: NIGHT_FILL, fillOpacity: 0.42, interactive: false }).addTo(map);
     } else {
       nightLayerRef.current.setLatLngs(latlngs);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minuteKey]);
 
+  const zoom = (delta: number) => mapRef.current?.setZoom(mapRef.current.getZoom() + delta);
+
   return (
-    <div
-      ref={containerRef}
-      className="map-viewport"
-      role="img"
-      aria-label="Live world map showing the ISS's position and ground track. Pan and zoom to explore."
-    />
+    <div className={`map-shell${pickMode ? ' map-shell--picking' : ''}`}>
+      <div
+        ref={containerRef}
+        className="map-viewport"
+        role="application"
+        aria-label="Live world map showing the ISS position and ground track. Drag to pan, scroll or pinch to zoom."
+      />
+
+      <div className="map-controls" role="group" aria-label="Map controls">
+        <button type="button" className={`map-btn map-btn--follow${follow ? ' is-on' : ''}`} onClick={() => onFollowChange(!follow)} aria-pressed={follow} title={follow ? 'Following the ISS' : 'Follow the ISS'}>
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
+            <circle cx="8" cy="8" r="2.4" />
+            <path d="M8 1.5v2.2M8 12.3v2.2M1.5 8h2.2M12.3 8h2.2" />
+          </svg>
+          <span>{follow ? 'Following' : 'Follow ISS'}</span>
+        </button>
+        <div className="map-zoom">
+          <button type="button" className="map-btn" onClick={() => zoom(1)} aria-label="Zoom in">+</button>
+          <button type="button" className="map-btn" onClick={() => zoom(-1)} aria-label="Zoom out">−</button>
+        </div>
+      </div>
+
+      {pickMode && <div className="pick-hint" role="status">Click anywhere on the map to set your viewing spot</div>}
+
+      <ul className="map-legend" aria-label="Map legend">
+        <li><i className="lg-line lg-line--past" />Past track</li>
+        <li><i className="lg-line lg-line--future" />Next 3 hours</li>
+        <li><i className="lg-swatch" />Night side</li>
+      </ul>
+    </div>
   );
 }

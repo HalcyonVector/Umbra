@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { satelliteElevationDeg, satelliteAzimuthDeg, evaluateVisibility, slantRangeKm } from './visibility';
+import { satelliteElevationDeg, satelliteAzimuthDeg, evaluateVisibility, slantRangeKm, shadowDepressionDeg, isSatelliteSunlit } from './visibility';
 import { subsolarPoint, isDaylight, solarElevationDeg } from './solarTerminator';
 import { destinationPoint, EARTH_RADIUS_KM, toDegrees } from './greatCircle';
 import { ISS_MEAN_ALTITUDE_KM } from './orbitalMechanics';
@@ -97,9 +97,22 @@ describe('evaluateVisibility', () => {
     expect(result.elevationDeg).toBeGreaterThanOrEqual(10);
   });
 
+  it('stays visible after the ground beneath the ISS has gone dark, because the station itself is still sunlit', () => {
+    // Subpoint ~1100km (~10deg of solar depression) into the night side: dark
+    // on the ground, but well inside the ~20deg the ISS can still see the sun.
+    const issSub = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 1100);
+    const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 1300);
+
+    expect(isDaylight(issSub.lat, issSub.lon, date)).toBe(false);
+    const result = evaluateVisibility(observer.lat, observer.lon, issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM, date);
+    expect(result.issSunlit).toBe(true);
+    expect(result.visible).toBe(true);
+  });
+
   it('is not visible when the ISS itself is in Earth\'s shadow, even if geometrically well-placed', () => {
-    const issSub = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 50); // just past the terminator into night
-    const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 700);
+    // ~3300km (~30deg of solar depression) into the night side: past the ISS's shadow line.
+    const issSub = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 3300);
+    const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM + 3500);
 
     const result = evaluateVisibility(observer.lat, observer.lon, issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM, date);
     expect(result.issSunlit).toBe(false);
@@ -131,5 +144,24 @@ describe('evaluateVisibility', () => {
     const strict = evaluateVisibility(observer.lat, observer.lon, issSub.lat, issSub.lon, ISS_MEAN_ALTITUDE_KM, date, { minElevationDeg: 80 });
     expect(lenient.visible).toBe(true);
     expect(strict.visible).toBe(false);
+  });
+});
+
+describe('shadowDepressionDeg / isSatelliteSunlit', () => {
+  it('puts the ISS shadow line about 20 degrees below the horizon', () => {
+    expect(shadowDepressionDeg(ISS_MEAN_ALTITUDE_KM)).toBeGreaterThan(19.5);
+    expect(shadowDepressionDeg(ISS_MEAN_ALTITUDE_KM)).toBeLessThan(21);
+  });
+
+  it('is zero for a point on the surface', () => {
+    expect(shadowDepressionDeg(0)).toBeCloseTo(0, 6);
+  });
+
+  it('is sunlit at the subsolar point and dark at the antisolar point', () => {
+    const date = new Date('2026-09-10T06:00:00Z');
+    const sub = subsolarPoint(date);
+    expect(isSatelliteSunlit(sub.lat, sub.lon, ISS_MEAN_ALTITUDE_KM, date)).toBe(true);
+    const anti = { lat: -sub.lat, lon: sub.lon > 0 ? sub.lon - 180 : sub.lon + 180 };
+    expect(isSatelliteSunlit(anti.lat, anti.lon, ISS_MEAN_ALTITUDE_KM, date)).toBe(false);
   });
 });

@@ -1,18 +1,39 @@
 import { haversineDistanceKm, initialBearingDeg, toDegrees, EARTH_RADIUS_KM } from './greatCircle';
-import { isDaylight, solarElevationDeg } from './solarTerminator';
+import { solarElevationDeg } from './solarTerminator';
+
+/**
+ * How far below the horizon (deg) the sun can be at the sub-satellite point
+ * while a satellite at `altitudeKm` is still in direct sunlight: the angle
+ * between the local horizontal and the line from the satellite grazing
+ * Earth's limb, acos(Re / (Re + h)). About 20.3deg for the ISS. Ignores
+ * atmospheric refraction, which extends it by a fraction of a degree.
+ */
+export function shadowDepressionDeg(altitudeKm: number): number {
+  return toDegrees(Math.acos(EARTH_RADIUS_KM / (EARTH_RADIUS_KM + altitudeKm)));
+}
+
+/**
+ * Whether a satellite is lit by the sun. Not the same as the ground beneath
+ * it being in daylight: from 400km up the station keeps seeing the sun for
+ * roughly 20deg of solar depression after the ground below has gone dark,
+ * which is exactly why ISS passes are visible after dusk and before dawn.
+ */
+export function isSatelliteSunlit(subLat: number, subLon: number, altitudeKm: number, date: Date): boolean {
+  return solarElevationDeg(subLat, subLon, date) > -shadowDepressionDeg(altitudeKm);
+}
 
 /**
  * The look-angle elevation (deg) of a satellite at `altitudeKm` above its
  * sub-satellite point, as seen from an observer elsewhere on Earth's
- * surface — the standard spherical-Earth formula:
+ * surface, the standard spherical-Earth formula:
  *
  *   elevation = atan2(cos(gamma) - Re/(Re+h), sin(gamma))
  *
  * where gamma is the great-circle central angle between observer and
  * sub-satellite point (groundDistanceKm / Re). At gamma=0 (satellite
- * directly overhead) this returns 90deg; at the geometric horizon — for the
+ * directly overhead) this returns 90deg; at the geometric horizon, for the
  * ISS's altitude, about 20deg of central angle, ~2200km of ground distance
- * — it returns 0deg; beyond the horizon it goes negative (not a real
+ *, it returns 0deg; beyond the horizon it goes negative (not a real
  * observable angle, just a convenient monotonic value below the 0 cutoff).
  */
 export function satelliteElevationDeg(observerLat: number, observerLon: number, subLat: number, subLon: number, altitudeKm: number): number {
@@ -25,7 +46,7 @@ export function satelliteElevationDeg(observerLat: number, observerLon: number, 
 
 /**
  * The true straight-line (3D slant range) distance in km between an
- * observer on Earth's surface and the satellite itself — not the ground
+ * observer on Earth's surface and the satellite itself, not the ground
  * distance to the sub-satellite point. Standard law-of-cosines triangle: the
  * observer sits at radius Re from Earth's center, the satellite at
  * Re+altitudeKm, separated by the same central angle `gamma` used for the
@@ -41,7 +62,7 @@ export function slantRangeKm(observerLat: number, observerLon: number, subLat: n
 
 /**
  * The compass bearing (deg, 0=N/90=E/180=S/270=W) from an observer toward
- * the satellite's sub-point — what direction to look. This uses the
+ * the satellite's sub-point, what direction to look. This uses the
  * great-circle bearing to the sub-satellite point rather than a full
  * topocentric azimuth correction for the satellite's height above the
  * horizon: a good approximation near the horizon (where the direction
@@ -55,7 +76,7 @@ export function satelliteAzimuthDeg(observerLat: number, observerLon: number, su
 export interface VisibilityOptions {
   /** Minimum look-angle elevation to count as "worth looking for," degrees above the horizon. */
   minElevationDeg?: number;
-  /** How far below the horizon the sun must be at the observer's location — 6deg is civil twilight, the loose common threshold for "dark enough to spot a bright moving point." */
+  /** How far below the horizon the sun must be at the observer's location, 6deg is civil twilight, the loose common threshold for "dark enough to spot a bright moving point." */
   minObserverDarknessDeg?: number;
 }
 
@@ -72,7 +93,7 @@ const DEFAULT_MIN_OBSERVER_DARKNESS_DEG = 6;
 /**
  * Whether the ISS would actually be visible to the naked eye right now from
  * (observerLat, observerLon): high enough above the local horizon, lit by
- * the sun (it has no lights of its own — visibility is entirely reflected
+ * the sun (it has no lights of its own, visibility is entirely reflected
  * sunlight, the same reason it looks like a fast-moving star), and the
  * observer's own sky dark enough that a lit satellite isn't washed out by
  * daylight or bright twilight. This is the real condition that makes ISS
@@ -92,7 +113,7 @@ export function evaluateVisibility(
   const minObserverDarknessDeg = options.minObserverDarknessDeg ?? DEFAULT_MIN_OBSERVER_DARKNESS_DEG;
 
   const elevationDeg = satelliteElevationDeg(observerLat, observerLon, subLat, subLon, altitudeKm);
-  const issSunlit = isDaylight(subLat, subLon, date);
+  const issSunlit = isSatelliteSunlit(subLat, subLon, altitudeKm, date);
   const observerSolarElevationDeg = solarElevationDeg(observerLat, observerLon, date);
 
   const visible = elevationDeg >= minElevationDeg && issSunlit && observerSolarElevationDeg <= -minObserverDarknessDeg;

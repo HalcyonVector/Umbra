@@ -25,7 +25,7 @@ function Toast({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: string)
   );
 }
 
-/** A small stack of session-milestone notifications (distance/country/orbit thresholds crossed) — a moment of payoff for the otherwise-passive rail stats, auto-dismissing so they never pile up or block anything. */
+/** A small stack of session-milestone notifications (distance/country/orbit thresholds crossed), a moment of payoff for the otherwise-passive rail stats, auto-dismissing so they never pile up or block anything. */
 export function ToastStack({ toasts, onDismiss }: ToastStackProps) {
   if (toasts.length === 0) return null;
   return (

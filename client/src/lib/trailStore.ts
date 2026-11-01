@@ -11,7 +11,7 @@ function isTrackPoint(value: unknown): value is TrackPoint {
 }
 
 /**
- * The ground-track trail is the "living cartography" — it's meant to keep
+ * The ground-track trail is the "living cartography", it's meant to keep
  * growing the longer you've had Umbra open across sessions, not reset on
  * every reload. Persisted to localStorage, capped by both age and count so
  * it can't grow unbounded; best-effort and never throws, same convention
@@ -35,7 +35,7 @@ export function saveTrail(points: TrackPoint[]): void {
     const capped = points.length > MAX_TRAIL_POINTS ? points.slice(points.length - MAX_TRAIL_POINTS) : points;
     localStorage.setItem(TRAIL_KEY, JSON.stringify(capped));
   } catch {
-    // quota exceeded or storage disabled — the weave just stops growing across reloads, not fatal
+    // quota exceeded or storage disabled, the weave just stops growing across reloads, not fatal
   }
 }
 

@@ -11,7 +11,7 @@ import { computeGroundSpeedKmh, computeBearingDeg, pruneTrail, type TrackPoint }
 import { findCountryAt, computeBBox, type CountryFeature, type CountryGeometry } from './orbital/countryLookup';
 import { deriveOrbitalElements, propagateSubSatellitePoint, orbitalPhaseAt, type OrbitalElements } from './orbital/groundTrackPropagator';
 import { predictVisiblePasses, predictLocalTwilightTransition, findBestViewingSpotNow } from './orbital/eventPrediction';
-import { slantRangeKm } from './orbital/visibility';
+import { slantRangeKm, shadowDepressionDeg } from './orbital/visibility';
 import { haversineDistanceKm } from './orbital/greatCircle';
 import { loadTrail, saveTrail } from './lib/trailStore';
 import { crossedMilestones, DISTANCE_MILESTONES_KM, COUNTRY_MILESTONES, LAP_MILESTONES } from './lib/milestones';
@@ -22,8 +22,9 @@ import {
 import { MapScene } from './components/MapScene';
 import { TopBar } from './components/TopBar';
 import { IntroCard } from './components/IntroCard';
-import { TelemetryRail } from './components/TelemetryRail';
-import { PredictorDock, type GeolocationStatus } from './components/PredictorDock';
+import { StatStrip } from './components/StatStrip';
+import { MissionPanel } from './components/MissionPanel';
+import { PassPanel, type GeolocationStatus } from './components/PassPanel';
 import { ToastStack, type ToastItem } from './components/ToastStack';
 import type { OrbitalTelemetry, SolarState } from './types';
 import './App.css';
@@ -33,10 +34,14 @@ const PASS_WINDOW_MS = 24 * 60 * 60_000;
 const FALLBACK_PASS_WINDOW_MS = 10 * 24 * 60 * 60_000;
 const PREDICTED_TRAIL_HORIZON_MS = 3 * 60 * 60_000;
 const PREDICTED_TRAIL_STEP_MS = 2 * 60_000;
-const TWILIGHT_BAND_DEG = 8;
+// Within this many degrees of the station's own shadow line, it is
+// crossing between orbital day and night.
+const TWILIGHT_BAND_DEG = 2;
 
-function resolveSolarState(isDaylight: boolean, elevationDeg: number): SolarState {
-  if (Math.abs(elevationDeg) < TWILIGHT_BAND_DEG) return 'twilight';
+type MobileTab = 'map' | 'passes' | 'mission';
+
+function resolveSolarState(isDaylight: boolean, elevationDeg: number, altitudeKm: number): SolarState {
+  if (Math.abs(elevationDeg + shadowDepressionDeg(altitudeKm)) < TWILIGHT_BAND_DEG) return 'twilight';
   return isDaylight ? 'day' : 'night';
 }
 
@@ -59,8 +64,11 @@ export default function App() {
   const [sunriseCount, setSunriseCount] = useState(0);
   const [sunsetCount, setSunsetCount] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [follow, setFollow] = useState(true);
+  const [pickingOnMap, setPickingOnMap] = useState(false);
+  const [mobileTab, setMobileTab] = useState<MobileTab>('map');
 
-  // Session-only "novel feature" stats — all derived from data the app
+  // Session-only "novel feature" stats, all derived from data the app
   // already computes, reset on page reload rather than persisted, since
   // they're framed as "this session," not a permanent record.
   const [countriesOverflown, setCountriesOverflown] = useState<string[]>([]);
@@ -70,7 +78,7 @@ export default function App() {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   // Stable identities: App re-renders on every telemetry tick, and Toast's
-  // auto-dismiss timer effect depends on `onDismiss` — a fresh function
+  // auto-dismiss timer effect depends on `onDismiss`, a fresh function
   // reference each render was resetting that timer before it ever reached
   // its 6s duration, so toasts never auto-dismissed.
   const addToast = useCallback((message: string) => {
@@ -97,9 +105,15 @@ export default function App() {
   }, []);
 
   const { position: livePosition, consecutiveFailures, lastFixMs } = useIssFeed();
-  const { count: crewFeedCount, people } = useCrewFeed();
+  const { count: crewFeedCount, people, expedition } = useCrewFeed();
 
-  // world-atlas ships pre-built TopoJSON country polygons (ISC-licensed) —
+  // Prefer the feed's measured altitude/velocity; fall back to the cited
+  // mean altitude and a speed derived from consecutive fixes.
+  const measuredAltitudeKm = livePosition?.altitudeKm ?? null;
+  const measuredVelocityKmh = livePosition?.velocityKmh ?? null;
+  const altitudeKm = measuredAltitudeKm ?? ISS_MEAN_ALTITUDE_KM;
+
+  // world-atlas ships pre-built TopoJSON country polygons (ISC-licensed) -
   // loaded once and point-in-polygon tested on every position update,
   // entirely offline, no reverse-geocoding API or key.
   const countries = useMemo<CountryFeature[]>(() => {
@@ -126,7 +140,7 @@ export default function App() {
 
   // Ground-track bookkeeping: derives speed/bearing/orbital elements from
   // consecutive real fixes, and grows the persisted "living cartography"
-  // trail — but only from genuinely new samples (not a cached poll repeat).
+  // trail, but only from genuinely new samples (not a cached poll repeat).
   useEffect(() => {
     if (!livePosition) return;
     const curr: TrackPoint = { lat: livePosition.lat, lon: livePosition.lon, timeMs: livePosition.timestampMs };
@@ -142,7 +156,7 @@ export default function App() {
         setOrbitalElements(deriveOrbitalElements(curr.lat, curr.lon, bearing, curr.timeMs));
       }
       // Session odometer: real ground-track distance between consecutive
-      // fixes, not a scaled/derived speed — an honest, directly-measured
+      // fixes, not a scaled/derived speed, an honest, directly-measured
       // running total for the whole time this tab's been open.
       setTotalDistanceKm((d) => d + haversineDistanceKm(prev.lat, prev.lon, curr.lat, curr.lon));
     }
@@ -155,7 +169,7 @@ export default function App() {
   }, [livePosition]);
 
   // If the live ISS feed never responds (Open Notify and its fallback both
-  // down), don't leave the map and telemetry blank forever — seed a one-time
+  // down), don't leave the map and telemetry blank forever, seed a one-time
   // estimate from the last two points of the persisted ground track (see
   // lib/trailStore.ts), so there's something to look at instead of an
   // indefinite "waiting for telemetry" state. The moment a real fix arrives,
@@ -171,7 +185,7 @@ export default function App() {
   }, []);
 
   // The smoothly-propagated "where is it right now" position, used for
-  // display (map marker, dashboard readouts) — falls back to the last raw
+  // display (map marker, dashboard readouts), falls back to the last raw
   // fix until enough samples exist to derive real orbital elements.
   const displayPosition = useMemo(() => {
     if (orbitalElements) return propagateSubSatellitePoint(orbitalElements, nowMs);
@@ -185,7 +199,9 @@ export default function App() {
 
     if (!displayPosition) {
       return {
-        altitudeKm: ISS_MEAN_ALTITUDE_KM,
+        altitudeKm,
+        measured: false,
+        position: null,
         groundSpeedKmh: null,
         orbitalSpeedKmS: null,
         bearingDeg: null,
@@ -199,25 +215,31 @@ export default function App() {
 
     const date = new Date(nowMs);
     const elevationDeg = solarElevationDeg(displayPosition.lat, displayPosition.lon, date);
-    const orbitalSpeedKmS = groundSpeedKmh != null ? groundSpeedToOrbitalSpeedKmS(groundSpeedKmh, ISS_MEAN_ALTITUDE_KM) : null;
+    const orbitalSpeedKmS = measuredVelocityKmh != null
+      ? measuredVelocityKmh / 3600
+      : groundSpeedKmh != null ? groundSpeedToOrbitalSpeedKmS(groundSpeedKmh, altitudeKm) : null;
 
     return {
-      altitudeKm: ISS_MEAN_ALTITUDE_KM,
+      altitudeKm,
+      measured: measuredAltitudeKm != null,
+      position: displayPosition,
       groundSpeedKmh,
       orbitalSpeedKmS,
       bearingDeg,
       elevationDeg,
-      isDaylight: elevationDeg > 0,
+      // The station's own sunrise/sunset, not the ground's: it stays lit
+      // until the sun is ~20deg below the horizon beneath it.
+      isDaylight: elevationDeg > -shadowDepressionDeg(altitudeKm),
       country: findCountryAt(displayPosition.lon, displayPosition.lat, countries),
       crewCount,
       orbitalPhase: phase,
     };
-  }, [displayPosition, orbitalElements, nowMs, countries, groundSpeedKmh, bearingDeg, crewFeedCount]);
+  }, [displayPosition, orbitalElements, nowMs, countries, groundSpeedKmh, bearingDeg, crewFeedCount, altitudeKm, measuredAltitudeKm, measuredVelocityKmh]);
 
-  const solarState = resolveSolarState(telemetry.isDaylight, telemetry.elevationDeg);
+  const solarState = resolveSolarState(telemetry.isDaylight, telemetry.elevationDeg, telemetry.altitudeKm);
 
   // Counts the instant the continuously-ticking solar computation says the
-  // ISS actually crossed the terminator — a detected, not merely reported, event.
+  // ISS actually crossed the terminator, a detected, not merely reported, event.
   useEffect(() => {
     const prevDaylight = prevDaylightRef.current;
     prevDaylightRef.current = telemetry.isDaylight;
@@ -226,7 +248,7 @@ export default function App() {
     else setSunsetCount((n) => n + 1);
   }, [telemetry.isDaylight]);
 
-  // Countries overflown this session — a running list, order of first sight.
+  // Countries overflown this session, a running list, order of first sight.
   useEffect(() => {
     const country = telemetry.country;
     if (!country) return;
@@ -253,13 +275,13 @@ export default function App() {
 
   useEffect(() => {
     if (!observer || !displayPosition) return;
-    const rangeKm = slantRangeKm(observer.lat, observer.lon, displayPosition.lat, displayPosition.lon, ISS_MEAN_ALTITUDE_KM);
+    const rangeKm = slantRangeKm(observer.lat, observer.lon, displayPosition.lat, displayPosition.lon, altitudeKm);
     setClosestApproachKm((prev) => (prev === null || rangeKm < prev ? rangeKm : prev));
-  }, [observer, displayPosition]);
+  }, [observer, displayPosition, altitudeKm]);
 
   // Session-milestone toasts: a moment of payoff for otherwise-passive
   // stats, firing exactly once per threshold as each running total actually
-  // crosses it (see lib/milestones.ts) — never re-firing on re-render.
+  // crosses it (see lib/milestones.ts), never re-firing on re-render.
   useEffect(() => {
     const crossed = crossedMilestones(prevDistanceMilestoneRef.current, totalDistanceKm, DISTANCE_MILESTONES_KM);
     crossed.forEach((m) => addToast(`${m.toLocaleString()} km flown this session`));
@@ -301,13 +323,13 @@ export default function App() {
 
   // Genuinely zero visible passes in the next 24h happens for real (the
   // observer's local darkness has to overlap the ISS being both overhead
-  // and sunlit, which doesn't align every day) — rather than dead-ending on
+  // and sunlit, which doesn't align every day), rather than dead-ending on
   // "nothing", search much further out for the actual next good pass. Only
   // runs the expensive extended walk when the 24h window is truly empty.
   // Keyed on minuteKey rather than `orbitalElements` itself: elements get a
   // fresh object identity on every live position poll (~every 5-8s), which
   // would otherwise re-run this 10-day/57k-step search that often forever
-  // while stuck in the no-passes state — a real, measured multi-second
+  // while stuck in the no-passes state, a real, measured multi-second
   // main-thread stall, not just a theoretical one. A minute of staleness on
   // a 10-day-horizon search is a non-issue.
   const extendedPasses = useMemo(() => {
@@ -376,20 +398,61 @@ export default function App() {
     saveStoredObserver(loc);
   };
 
+  const handlePickOnMap = (loc: { lat: number; lon: number }) => {
+    handleSetObserver(loc);
+    setPickingOnMap(false);
+    addToast(`Watching from ${loc.lat.toFixed(2)}, ${loc.lon.toFixed(2)}`);
+  };
+
+  const handleTogglePickOnMap = () => {
+    setPickingOnMap((v) => {
+      const next = !v;
+      if (next) {
+        setFollow(false);
+        setMobileTab('map');
+      }
+      return next;
+    });
+  };
+
   const handleMinElevationChange = (v: number) => {
     setMinElevationDeg(v);
     saveStoredMinElevation(v);
   };
 
-  return (
-    <div className="umbra-shell">
-      <TopBar nowMs={nowMs} consecutiveFailures={consecutiveFailures} lastFixMs={lastFixMs} />
+  const passBadge = upcomingPasses.length > 0 ? upcomingPasses.length : null;
 
-      <div className="body-grid">
-        <TelemetryRail
+  return (
+    <div className={`umbra-shell tab-${mobileTab}`}>
+      <TopBar
+        nowMs={nowMs}
+        consecutiveFailures={consecutiveFailures}
+        lastFixMs={lastFixMs}
+        source={livePosition?.source ?? null}
+        onShowHelp={() => setShowTour(true)}
+      />
+
+      <main className="stage">
+        <MapScene
+          position={displayPosition}
+          observedTrail={trail}
+          predictedTrail={predictedTrail}
+          observer={observer}
+          nowMs={nowMs}
+          follow={follow}
+          onFollowChange={setFollow}
+          pickMode={pickingOnMap}
+          onPick={handlePickOnMap}
+        />
+
+        <StatStrip telemetry={telemetry} solarState={solarState} hasFix={displayPosition !== null} />
+
+        <MissionPanel
+          className="pane pane--mission"
           telemetry={telemetry}
-          solarState={solarState}
           crew={people}
+          crewCount={crewFeedCount}
+          expedition={expedition}
           sunriseCount={sunriseCount}
           sunsetCount={sunsetCount}
           countriesOverflown={countriesOverflown}
@@ -397,15 +460,8 @@ export default function App() {
           totalDistanceKm={totalDistanceKm}
         />
 
-        <MapScene
-          position={displayPosition}
-          observedTrail={trail}
-          predictedTrail={predictedTrail}
-          observer={observer}
-          nowMs={nowMs}
-        />
-
-        <PredictorDock
+        <PassPanel
+          className="pane pane--passes"
           observer={observer}
           onSetObserver={handleSetObserver}
           minElevationDeg={minElevationDeg}
@@ -416,11 +472,32 @@ export default function App() {
           nowMs={nowMs}
           geolocationStatus={geolocationStatus}
           onUseMyLocation={handleUseMyLocation}
+          pickingOnMap={pickingOnMap}
+          onTogglePickOnMap={handleTogglePickOnMap}
           closestApproachKm={closestApproachKm}
           localTwilightTransition={localTwilightTransition}
           goldenWindowCountry={goldenWindowCountry}
         />
-      </div>
+      </main>
+
+      <nav className="tabbar glass" aria-label="Sections">
+        {([
+          ['map', 'Live map'],
+          ['passes', 'Passes'],
+          ['mission', 'Mission'],
+        ] as [MobileTab, string][]).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            className={`tab${mobileTab === id ? ' is-active' : ''}`}
+            onClick={() => setMobileTab(id)}
+            aria-current={mobileTab === id ? 'page' : undefined}
+          >
+            {label}
+            {id === 'passes' && passBadge !== null && <span className="tab-badge num">{passBadge}</span>}
+          </button>
+        ))}
+      </nav>
 
       <ToastStack toasts={toasts} onDismiss={dismissToast} />
       {showTour && <IntroCard onFinish={finishTour} />}
