@@ -1,12 +1,12 @@
 {
   "name": "Umbra",
   "short_name": "Umbra",
-  "description": "A living cartography of the ISS's real orbit and a genuine visibility predictor — see its growing ground-track weave and find out exactly when it'll be visible from where you are.",
+  "description": "Track the International Space Station live and find out exactly when you can see it from where you are.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#060709",
-  "theme_color": "#060709",
+  "background_color": "#05070d",
+  "theme_color": "#05070d",
   "icons": [
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },

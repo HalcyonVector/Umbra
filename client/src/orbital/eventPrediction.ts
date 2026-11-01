@@ -1,6 +1,6 @@
 import { propagateSubSatellitePoint, type OrbitalElements } from './groundTrackPropagator';
 import { isDaylight, solarElevationDeg } from './solarTerminator';
-import { evaluateVisibility, satelliteAzimuthDeg, satelliteElevationDeg, type VisibilityOptions } from './visibility';
+import { evaluateVisibility, isSatelliteSunlit, satelliteAzimuthDeg, satelliteElevationDeg, type VisibilityOptions } from './visibility';
 import { destinationPoint } from './greatCircle';
 
 export interface CrossingPrediction {
@@ -17,7 +17,7 @@ const CROSSING_BISECT_ITERATIONS = 8;
 /**
  * Walks the propagated ground track forward from `fromMs` for `windowMs`,
  * sampling every `stepMs`, and returns every day/night terminator crossing
- * found in that window — each refined to sub-step resolution by bisecting
+ * found in that window, each refined to sub-step resolution by bisecting
  * between the straddling pair of samples. Unlike a linear ground-track
  * walk, this stays accurate across the whole window because
  * propagateSubSatellitePoint already accounts for the ground track's real
@@ -60,7 +60,7 @@ export function predictTerminatorCrossings(
   return crossings;
 }
 
-/** One sampled point along a pass's rise-to-set arc, in look-angle (azimuth/elevation) terms — what the sky-plot renders. */
+/** One sampled point along a pass's rise-to-set arc, in look-angle (azimuth/elevation) terms, what the sky-plot renders. */
 export interface PassTrackPoint {
   atMs: number;
   azimuthDeg: number;
@@ -93,8 +93,8 @@ const NOTABLE_DURATION_MS = 4 * 60_000;
 /**
  * Whether a predicted pass is genuinely worth going outside for, as opposed
  * to a marginal one worth listing but not planning around: either it climbs
- * high overhead (>=50deg peak elevation — well clear of horizon haze and
- * obstructions) or it stays visible for a good stretch (>=4 minutes) — the
+ * high overhead (>=50deg peak elevation, well clear of horizon haze and
+ * obstructions) or it stays visible for a good stretch (>=4 minutes), the
  * two independent reasons a pass reads as "great" to naked-eye satellite
  * spotters, either one being enough on its own.
  */
@@ -118,7 +118,7 @@ function finalizePass(open: OpenPass, endMs: number): PassPrediction {
 /**
  * Walks the propagated ground track forward, evaluating visibility from
  * (observerLat, observerLon) at every step, and groups contiguous visible
- * stretches into discrete pass windows — each carrying the full rise-to-set
+ * stretches into discrete pass windows, each carrying the full rise-to-set
  * azimuth/elevation track a sky-plot needs to actually show which direction
  * to look, not just how long until it's worth going outside.
  */
@@ -176,7 +176,7 @@ const TWILIGHT_BISECT_ITERATIONS = 10;
  * When will the observer's OWN local sky next cross the darkness threshold
  * used elsewhere for visibility (default 6deg below the horizon, civil
  * twilight)? This is deliberately distinct from the ISS's terminator
- * crossings above — a location can be in broad daylight while the ISS
+ * crossings above, a location can be in broad daylight while the ISS
  * itself is crossing into night on the far side of the planet, and knowing
  * "when will it be dark enough here to actually look up" is what the
  * visibility predictor's own darkness gate depends on. Since the observer's
@@ -226,19 +226,19 @@ const GOLDEN_WINDOW_MIN_ELEVATION_DEG = 10;
 
 /**
  * Scans a ring of candidate points around the ISS's current sub-satellite
- * point for the single best real place on Earth to look up right now — not
+ * point for the single best real place on Earth to look up right now, not
  * just at the observer's own set location. The ISS must be sunlit (it has
- * no lights of its own — this is the same constraint the pass predictor
+ * no lights of its own, this is the same constraint the pass predictor
  * uses), a candidate spot must be far enough below its own horizon to
  * matter (past civil twilight) and see the ISS at a real look-angle
  * (>=10deg, not skimming the horizon), and among everywhere that qualifies,
- * the darkest sky wins — the strongest contrast against a lit satellite.
+ * the darkest sky wins, the strongest contrast against a lit satellite.
  * Returns null when nothing on the ring qualifies (most commonly: the ISS
- * itself is currently in Earth's shadow) rather than forcing a pick — an
+ * itself is currently in Earth's shadow) rather than forcing a pick, an
  * honest "no exceptional window right now," not a fabricated one.
  */
 export function findBestViewingSpotNow(subLat: number, subLon: number, altitudeKm: number, date: Date): GoldenWindowSpot | null {
-  if (!isDaylight(subLat, subLon, date)) return null;
+  if (!isSatelliteSunlit(subLat, subLon, altitudeKm, date)) return null;
 
   let best: GoldenWindowSpot | null = null;
   for (let i = 0; i < GOLDEN_WINDOW_RING_SAMPLES; i++) {

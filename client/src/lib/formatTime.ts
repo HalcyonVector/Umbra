@@ -12,7 +12,7 @@ export function formatRelativeTime(timeMs: number, nowMs: number = Date.now()): 
   return `${days}d ago`;
 }
 
-/** A short countdown label for a duration in ms, e.g. "42s", "12m", "1h 05m" — used for the predicted next-crossing ETA. */
+/** A short countdown label for a duration in ms, e.g. "42s", "12m", "1h 05m", used for the predicted next-crossing ETA. */
 export function formatDurationShort(deltaMs: number): string {
   const totalSeconds = Math.max(0, Math.round(deltaMs / 1000));
   if (totalSeconds < 60) return `${totalSeconds}s`;
@@ -25,4 +25,22 @@ export function formatDurationShort(deltaMs: number): string {
   const days = Math.floor(hours / 24);
   const remHours = hours % 24;
   return remHours > 0 ? `${days}d ${remHours}h` : `${days}d`;
+}
+
+/** "Today", "Tomorrow", or a short weekday ("Wed") for a future timestamp, relative to local midnight. */
+export function formatDayLabel(timeMs: number, nowMs: number = Date.now()): string {
+  const startOfDay = (ms: number) => {
+    const d = new Date(ms);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  };
+  const dayDiff = Math.round((startOfDay(timeMs) - startOfDay(nowMs)) / 86_400_000);
+  if (dayDiff === 0) return 'Today';
+  if (dayDiff === 1) return 'Tomorrow';
+  return new Date(timeMs).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
+}
+
+/** A local clock time like "19:42" (or "7:42 PM", per the browser's locale). */
+export function formatClockTime(timeMs: number): string {
+  return new Date(timeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }

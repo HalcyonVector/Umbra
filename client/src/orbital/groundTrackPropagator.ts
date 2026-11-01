@@ -1,10 +1,10 @@
 import { toRadians, toDegrees, normalizeDeg180 } from './greatCircle';
 import { ISS_MEAN_PERIOD_MIN } from './orbitalMechanics';
 
-/** The ISS's real orbital inclination — not derivable from a single Open Notify fix, so it's a cited constant like altitude. */
+/** The ISS's real orbital inclination, not derivable from a single Open Notify fix, so it's a cited constant like altitude. */
 export const ISS_INCLINATION_DEG = 51.6;
 
-const SIDEREAL_DAY_MS = 86_164_090.5; // 86164.0905s — one Earth rotation relative to the stars, not the 24h solar day
+const SIDEREAL_DAY_MS = 86_164_090.5; // 86164.0905s, one Earth rotation relative to the stars, not the 24h solar day
 const EARTH_ROTATION_DEG_PER_MS = 360 / SIDEREAL_DAY_MS;
 
 export interface LatLon {
@@ -24,7 +24,7 @@ export interface OrbitalElements {
 
 /**
  * Closed-form orbit determination for a circular, spherical-Earth orbit
- * from a single observed (lat, lon, bearing, time) fix — the inclination
+ * from a single observed (lat, lon, bearing, time) fix, the inclination
  * and period are taken as known constants (real values, cited elsewhere),
  * which is enough to solve for the remaining two elements algebraically:
  *
@@ -69,13 +69,13 @@ export function deriveOrbitalElements(
  * time from a set of orbital elements. Models a satellite moving at a
  * constant angular rate around an inclined great circle, with that great
  * circle's Earth-fixed ascending-node longitude drifting westward at
- * Earth's sidereal rotation rate — which is exactly right for a
+ * Earth's sidereal rotation rate, which is exactly right for a
  * non-precessing circular orbit around a rotating Earth.
  *
  * Deliberately NOT modeled (all real, small-to-moderate effects):
  *  - Atmospheric drag (the ISS's real altitude and period slowly decay
  *    between reboosts).
- *  - J2 (Earth's equatorial bulge) nodal precession — for the ISS this is
+ *  - J2 (Earth's equatorial bulge) nodal precession, for the ISS this is
  *    roughly -5deg/day, small next to the ~360deg/day rotation term this
  *    function does model, but not zero.
  *  - Orbital eccentricity (the ISS's real orbit is very nearly but not
@@ -101,7 +101,7 @@ export function propagateSubSatellitePoint(elements: OrbitalElements, atMs: numb
 
 /**
  * How far through the current real orbit the satellite is right now, as a
- * continuous 0..1 fraction of the argument of latitude — the Mission
+ * continuous 0..1 fraction of the argument of latitude, the Mission
  * Dashboard's orbit-progress ring reads this directly. Unlike a wall-clock
  * modulo, this reflects the satellite's actual current position in its
  * actual orbit, derived from the real elements.

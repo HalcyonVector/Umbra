@@ -10,7 +10,7 @@ async function freshApp() {
   return createApp();
 }
 
-function mockIssResponse(lat = '35.6895', lon = '139.6917', timestamp = 1750000000) {
+function mockOpenNotifyResponse(lat = '35.6895', lon = '139.6917', timestamp = 1750000000) {
   return {
     ok: true,
     status: 200,
@@ -22,11 +22,11 @@ function mockIssResponse(lat = '35.6895', lon = '139.6917', timestamp = 17500000
   };
 }
 
-function mockFallbackResponse(lat = 12.3, lon = 45.6, timestamp = 1750000500) {
+function mockPrimaryResponse(lat = 12.3, lon = 45.6, timestamp = 1750000500) {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ latitude: lat, longitude: lon, timestamp, name: 'iss' }),
+    json: async () => ({ latitude: lat, longitude: lon, timestamp, name: 'iss', altitude: 418.2, velocity: 27580.1, visibility: 'daylight' }),
   };
 }
 
@@ -35,33 +35,39 @@ describe('GET /api/iss', () => {
     vi.unstubAllGlobals();
   });
 
-  it('normalizes Open Notify\'s string lat/lon into numbers, with an ms timestamp', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => mockIssResponse()));
+  it('normalizes wheretheiss.at into a position with real altitude and velocity', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => mockPrimaryResponse()));
     const app = await freshApp();
 
     const res = await request(app).get('/api/iss');
     expect(res.status).toBe(200);
     expect(res.body.cached).toBe(false);
-    expect(res.body.position).toEqual({ lat: 35.6895, lon: 139.6917, timestampMs: 1750000000000, source: 'open-notify' });
+    expect(res.body.position).toEqual({
+      lat: 12.3, lon: 45.6, timestampMs: 1750000500000,
+      altitudeKm: 418.2, velocityKmh: 27580.1, visibility: 'daylight', source: 'wheretheiss.at',
+    });
   });
 
-  it('falls back to the secondary ISS API when Open Notify is unreachable', async () => {
+  it('falls back to Open Notify when wheretheiss.at is unreachable', async () => {
     const fetchMock = vi
       .fn()
       .mockImplementationOnce(async () => {
-        throw new Error('open-notify unreachable');
+        throw new Error('wheretheiss unreachable');
       })
-      .mockImplementationOnce(async () => mockFallbackResponse());
+      .mockImplementationOnce(async () => mockOpenNotifyResponse());
     vi.stubGlobal('fetch', fetchMock);
     const app = await freshApp();
 
     const res = await request(app).get('/api/iss');
     expect(res.status).toBe(200);
-    expect(res.body.position).toEqual({ lat: 12.3, lon: 45.6, timestampMs: 1750000500000, source: 'wheretheiss.at' });
+    expect(res.body.position).toEqual({
+      lat: 35.6895, lon: 139.6917, timestampMs: 1750000000000,
+      altitudeKm: null, velocityKmh: null, visibility: null, source: 'open-notify',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns 502 when both Open Notify and the fallback are unreachable', async () => {
+  it('returns 502 when both feeds are unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => {
       throw new Error('network down');
     }));
@@ -73,7 +79,7 @@ describe('GET /api/iss', () => {
   });
 
   it('serves a cached response on the next request without calling fetch again', async () => {
-    const fetchMock = vi.fn(async () => mockIssResponse());
+    const fetchMock = vi.fn(async () => mockPrimaryResponse());
     vi.stubGlobal('fetch', fetchMock);
     const app = await freshApp();
 
@@ -85,7 +91,7 @@ describe('GET /api/iss', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('returns 502 when the upstream feed fails', async () => {
+  it('returns 502 when both upstream feeds respond with errors', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 500 })));
     const app = await freshApp();
 
@@ -94,11 +100,11 @@ describe('GET /api/iss', () => {
     expect(res.body.error).toBe('iss_unavailable');
   });
 
-  it('returns 502 (rather than crashing) on a malformed position', async () => {
+  it('returns 502 (rather than crashing) when every feed returns a malformed position', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
       status: 200,
-      json: async () => ({ timestamp: 1750000000, iss_position: { latitude: 'not-a-number', longitude: '10' } }),
+      json: async () => ({ latitude: 'nope', timestamp: 1750000000, iss_position: { latitude: 'not-a-number', longitude: '10' } }),
     })));
     const app = await freshApp();
 

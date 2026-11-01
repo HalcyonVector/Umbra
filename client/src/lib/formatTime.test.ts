@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatRelativeTime, formatDurationShort } from './formatTime';
+import { formatRelativeTime, formatDurationShort, formatDayLabel } from './formatTime';
 
 describe('formatRelativeTime', () => {
   it('reads "just now" for very recent timestamps', () => {
@@ -55,5 +55,21 @@ describe('formatDurationShort', () => {
 
   it('clamps negative durations to 0', () => {
     expect(formatDurationShort(-5000)).toBe('0s');
+  });
+});
+
+describe('formatDayLabel', () => {
+  const now = new Date(2026, 10, 1, 15, 0, 0).getTime();
+
+  it('labels later the same day as Today', () => {
+    expect(formatDayLabel(new Date(2026, 10, 1, 23, 30).getTime(), now)).toBe('Today');
+  });
+
+  it('labels the next calendar day as Tomorrow, even if under 24h away', () => {
+    expect(formatDayLabel(new Date(2026, 10, 2, 0, 15).getTime(), now)).toBe('Tomorrow');
+  });
+
+  it('falls back to a short date further out', () => {
+    expect(formatDayLabel(new Date(2026, 10, 5, 6, 0).getTime(), now)).not.toMatch(/Today|Tomorrow/);
   });
 });

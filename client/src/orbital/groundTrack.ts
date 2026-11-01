@@ -11,12 +11,12 @@ export interface TrackPoint {
  * a duplicate timestamp (nothing new to compute from) or, after a network
  * hiccup, a large gap (during which the ISS moved far enough that a naive
  * distance/time division would read as a wildly implausible speed). Both
- * are guarded against here rather than trusted blindly — see the README's
+ * are guarded against here rather than trusted blindly, see the README's
  * Honest Limitations section.
  */
 const MIN_DT_MS = 500;
 const MAX_DT_MS = 60_000;
-/** Generous ceiling in km/h — well above the ISS's real ~27,600 km/h — used only to reject obviously-corrupt samples. */
+/** Generous ceiling in km/h, well above the ISS's real ~27,600 km/h, used only to reject obviously-corrupt samples. */
 const MAX_PLAUSIBLE_SPEED_KMH = 40_000;
 
 /** Ground-track speed (km/h) between two consecutive position fixes, or null if the pair is unusable (see guards above). */

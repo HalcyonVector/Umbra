@@ -8,7 +8,7 @@ export function dayOfYearUTC(date: Date): number {
   return Math.floor((today - start) / 86_400_000) + 1;
 }
 
-/** The sun's declination (deg) for a given date — how far north/south of the equator the subsolar point sits. */
+/** The sun's declination (deg) for a given date, how far north/south of the equator the subsolar point sits. */
 export function solarDeclinationDeg(date: Date): number {
   const n = dayOfYearUTC(date);
   return 23.44 * Math.sin(toRadians((360 / 365) * (284 + n)));
@@ -18,7 +18,7 @@ export function solarDeclinationDeg(date: Date): number {
  * The equation of time (minutes): the small, date-dependent gap between
  * apparent solar time and mean solar time caused by Earth's axial tilt and
  * orbital eccentricity. A standard low-order approximation (NOAA), good to
- * within about a minute — plenty precise for a ~8deg terminator band.
+ * within about a minute, plenty precise for a ~8deg terminator band.
  */
 export function equationOfTimeMinutes(date: Date): number {
   const n = dayOfYearUTC(date);
@@ -46,7 +46,7 @@ export function subsolarPoint(date: Date): LatLon {
  * where H is the hour angle (the point's longitude offset from the subsolar
  * meridian). Equivalently, elevation = 90 deg minus the great-circle angular
  * distance to the subsolar point, since the subsolar point is by definition
- * where the sun is straight up — a handy identity for tests.
+ * where the sun is straight up, a handy identity for tests.
  */
 export function solarElevationDeg(lat: number, lon: number, date: Date): number {
   const sub = subsolarPoint(date);
@@ -63,13 +63,13 @@ export function isDaylight(lat: number, lon: number, date: Date): boolean {
 
 /**
  * The latitude of the day/night boundary at a given longitude, at a given
- * instant — derived analytically from spherical trig, not sampled on a grid:
+ * instant, derived analytically from spherical trig, not sampled on a grid:
  * a point (lat, lon) sits exactly on the terminator when solar elevation is
  * 0, i.e. sin(lat)sin(decl) + cos(lat)cos(decl)cos(H) = 0, which rearranges
  * to tan(lat) = -cos(H) / tan(decl), where H is the hour angle (the point's
  * longitude offset from the subsolar meridian). Near an equinox (decl ~ 0)
  * the terminator degenerates into a meridian pair rather than a function of
- * longitude — this saturates toward +-90 in that case (still a visually
+ * longitude, this saturates toward +-90 in that case (still a visually
  * correct near-polar curve) instead of dividing by zero.
  */
 export function terminatorLatitudeDeg(lon: number, date: Date): number {

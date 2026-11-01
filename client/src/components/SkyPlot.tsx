@@ -1,29 +1,19 @@
 import { projectSkyPlot } from '../map/projection';
+import { compassLabel } from '../lib/compass';
 import type { PassPrediction } from '../orbital/eventPrediction';
 
-const CENTER = 100;
-const OUTER_RADIUS = 86; // elevation 0 (horizon)
-const MID_RADIUS = OUTER_RADIUS * (2 / 3); // elevation 30
-const INNER_RADIUS = OUTER_RADIUS * (1 / 3); // elevation 60
+const CENTER = 110;
+const OUTER_RADIUS = 92; // elevation 0 (horizon)
 
 interface SkyPlotProps {
   pass: PassPrediction | null;
 }
 
-const COMPASS_POINTS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
-
-function compassLabel(azimuthDeg: number): string {
-  const normalized = ((azimuthDeg % 360) + 360) % 360;
-  return COMPASS_POINTS[Math.round(normalized / 22.5) % 16];
-}
-
 /**
- * A polar sky-plot — the chart real satellite-tracking software uses to
- * show where to physically point: elevation 90 (straight up) at the
- * center, the horizon at the outer ring, compass direction around the
- * edge. The track, rise/peak/set markers, and caption are all read
- * directly from a real predicted pass (orbital/eventPrediction.ts),
- * nothing here is illustrative.
+ * A polar sky chart, the view satellite trackers use to know where to point:
+ * straight up at the center, the horizon at the outer ring, compass
+ * directions around the edge. Track and markers come from a real predicted
+ * pass (orbital/eventPrediction.ts).
  */
 export function SkyPlot({ pass }: SkyPlotProps) {
   const track = pass?.track ?? [];
@@ -31,54 +21,81 @@ export function SkyPlot({ pass }: SkyPlotProps) {
   const set = track.length > 0 ? track[track.length - 1] : null;
   const peak = track.length > 0 ? track.reduce((best, p) => (p.elevationDeg > best.elevationDeg ? p : best), track[0]) : null;
 
+  const project = (az: number, el: number) => projectSkyPlot(az, el, OUTER_RADIUS, CENTER, CENTER);
   const trackPath = track
     .map((p, i) => {
-      const { x, y } = projectSkyPlot(p.azimuthDeg, p.elevationDeg, OUTER_RADIUS, CENTER, CENTER);
+      const { x, y } = project(p.azimuthDeg, p.elevationDeg);
       return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(' ');
 
-  const risePoint = rise ? projectSkyPlot(rise.azimuthDeg, rise.elevationDeg, OUTER_RADIUS, CENTER, CENTER) : null;
-  const peakPoint = peak ? projectSkyPlot(peak.azimuthDeg, peak.elevationDeg, OUTER_RADIUS, CENTER, CENTER) : null;
-  const setPoint = set ? projectSkyPlot(set.azimuthDeg, set.elevationDeg, OUTER_RADIUS, CENTER, CENTER) : null;
+  const risePoint = rise ? project(rise.azimuthDeg, rise.elevationDeg) : null;
+  const peakPoint = peak ? project(peak.azimuthDeg, peak.elevationDeg) : null;
+  const setPoint = set ? project(set.azimuthDeg, set.elevationDeg) : null;
+
+  const rings = [0, 30, 60].map((el) => ({ el, r: OUTER_RADIUS * (1 - el / 90) }));
+  const ticks = Array.from({ length: 12 }, (_, i) => i * 30);
 
   return (
-    <div className="skyplot-frame">
-      <span className="corner tl" /><span className="corner tr" />
-      <span className="corner bl" /><span className="corner br" />
-      <div className="skyplot-wrap">
-        <svg viewBox="0 0 200 200" width={188} height={188} role="img" aria-label={pass ? 'Sky-plot of the next visible pass' : 'No upcoming pass'}>
-          <defs>
-            <filter id="skyplot-glow" x="-150%" y="-150%" width="400%" height="400%">
-              <feGaussianBlur stdDeviation="5" result="b"></feGaussianBlur>
-              <feMerge><feMergeNode in="b"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
-            </filter>
-            <linearGradient id="skyplot-track" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stopColor="var(--line-strong)"></stop>
-              <stop offset="0.5" stopColor="var(--accent)"></stop>
-              <stop offset="1" stopColor="var(--line-strong)"></stop>
-            </linearGradient>
-          </defs>
-          <circle cx={CENTER} cy={CENTER} r={OUTER_RADIUS} fill="none" stroke="var(--line)" strokeWidth={1} />
-          <circle cx={CENTER} cy={CENTER} r={MID_RADIUS} fill="none" stroke="var(--line)" strokeWidth={1} />
-          <circle cx={CENTER} cy={CENTER} r={INNER_RADIUS} fill="none" stroke="var(--line-strong)" strokeWidth={1} />
-          <line x1={CENTER} y1={14} x2={CENTER} y2={186} stroke="var(--panel-raised)" strokeWidth={1} />
-          <line x1={14} y1={CENTER} x2={186} y2={CENTER} stroke="var(--panel-raised)" strokeWidth={1} />
-          <text x={CENTER} y={11} textAnchor="middle" className="skyplot-compass-label">N</text>
-          <text x={CENTER} y={197} textAnchor="middle" className="skyplot-compass-label">S</text>
-          <text x={7} y={103} textAnchor="middle" className="skyplot-compass-label">W</text>
-          <text x={193} y={103} textAnchor="middle" className="skyplot-compass-label">E</text>
-          {trackPath && <path d={trackPath} fill="none" stroke="url(#skyplot-track)" strokeWidth={1.6} strokeLinecap="round" />}
-          {risePoint && <circle cx={risePoint.x} cy={risePoint.y} r={2.6} fill="var(--text-muted)" />}
-          {peakPoint && <circle cx={peakPoint.x} cy={peakPoint.y} r={4} fill="var(--accent)" filter="url(#skyplot-glow)" />}
-          {setPoint && <circle cx={setPoint.x} cy={setPoint.y} r={2.6} fill="var(--text-muted)" />}
-        </svg>
-      </div>
-      <div className="skyplot-caption">
-        {pass && rise && peak && set
-          ? `RISE ${compassLabel(rise.azimuthDeg)} ${Math.round(rise.elevationDeg)}° → PEAK ${Math.round(peak.elevationDeg)}° → SET ${compassLabel(set.azimuthDeg)} ${Math.round(set.elevationDeg)}°`
-          : 'No upcoming pass to plot yet'}
-      </div>
-    </div>
+    <figure className="skyplot">
+      <svg viewBox="0 0 220 220" role="img" aria-label={pass && rise && set ? `Sky chart: rises in the ${compassLabel(rise.azimuthDeg)}, sets in the ${compassLabel(set.azimuthDeg)}` : 'Sky chart, no pass to show yet'}>
+        <defs>
+          <radialGradient id="sky-bg" cx="50%" cy="50%" r="50%">
+            <stop offset="0" stopColor="#14203a" />
+            <stop offset="1" stopColor="#0a0f1c" />
+          </radialGradient>
+          <linearGradient id="sky-track" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0" stopColor="#5eead4" stopOpacity="0.35" />
+            <stop offset="0.5" stopColor="#5eead4" />
+            <stop offset="1" stopColor="#5eead4" stopOpacity="0.35" />
+          </linearGradient>
+        </defs>
+        <circle cx={CENTER} cy={CENTER} r={OUTER_RADIUS} fill="url(#sky-bg)" stroke="rgba(255,255,255,0.14)" />
+        {rings.slice(1).map(({ el, r }) => (
+          <g key={el}>
+            <circle cx={CENTER} cy={CENTER} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeDasharray="2 3" />
+            <text x={CENTER + 3} y={CENTER - r - 2} className="skyplot-ring-label">{el}°</text>
+          </g>
+        ))}
+        {ticks.map((az) => {
+          const a = ((az - 90) * Math.PI) / 180;
+          const inner = az % 90 === 0 ? OUTER_RADIUS - 7 : OUTER_RADIUS - 4;
+          return (
+            <line
+              key={az}
+              x1={CENTER + Math.cos(a) * inner} y1={CENTER + Math.sin(a) * inner}
+              x2={CENTER + Math.cos(a) * OUTER_RADIUS} y2={CENTER + Math.sin(a) * OUTER_RADIUS}
+              stroke="rgba(255,255,255,0.25)"
+            />
+          );
+        })}
+        <text x={CENTER} y={12} textAnchor="middle" className="skyplot-compass">N</text>
+        <text x={CENTER} y={216} textAnchor="middle" className="skyplot-compass">S</text>
+        <text x={8} y={CENTER + 4} textAnchor="middle" className="skyplot-compass">W</text>
+        <text x={212} y={CENTER + 4} textAnchor="middle" className="skyplot-compass">E</text>
+        <circle cx={CENTER} cy={CENTER} r={1.6} fill="rgba(255,255,255,0.35)" />
+
+        {trackPath && <path d={trackPath} fill="none" stroke="url(#sky-track)" strokeWidth={2.4} strokeLinecap="round" />}
+        {risePoint && <circle cx={risePoint.x} cy={risePoint.y} r={3.4} fill="#0a0f1c" stroke="#5eead4" strokeWidth={1.6} />}
+        {setPoint && <circle cx={setPoint.x} cy={setPoint.y} r={3.4} fill="#0a0f1c" stroke="#94a3b8" strokeWidth={1.6} />}
+        {peakPoint && (
+          <>
+            <circle cx={peakPoint.x} cy={peakPoint.y} r={9} fill="#5eead4" opacity={0.18} />
+            <circle cx={peakPoint.x} cy={peakPoint.y} r={4.2} fill="#5eead4" />
+          </>
+        )}
+      </svg>
+      <figcaption className="skyplot-legend">
+        {pass && rise && peak && set ? (
+          <>
+            <span><i className="lg lg--rise" />Rises {compassLabel(rise.azimuthDeg)}</span>
+            <span><i className="lg lg--peak" />Peak {Math.round(peak.elevationDeg)}° {compassLabel(peak.azimuthDeg)}</span>
+            <span><i className="lg lg--set" />Sets {compassLabel(set.azimuthDeg)}</span>
+          </>
+        ) : (
+          <span>The path across your sky appears here once a pass is predicted.</span>
+        )}
+      </figcaption>
+    </figure>
   );
 }

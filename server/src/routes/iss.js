@@ -2,54 +2,65 @@ import { Router } from 'express';
 
 const router = Router();
 
-// Open Notify has no documented rate limit or update-cadence SLA — this is
-// a hobby project's free API, not a maintained commercial one. Deliberately
-// plain http, not https: Open Notify's HTTPS listener frequently refuses
-// the connection outright (confirmed directly — https times out at the TCP
-// level while http on the same host returns instantly), a known long-running
-// issue with the service, not something a client-side fix can work around.
-// Observed behavior when it's up is a fresh position roughly every ~5s. See
-// the README's Honest Limitations section.
-const ISS_URL = 'http://api.open-notify.org/iss-now.json';
+// Primary feed: wheretheiss.at. Free, no key, served over HTTPS, and unlike
+// Open Notify it reports the station's real altitude and velocity, so the
+// dashboard can show measured numbers instead of a cited constant.
+const PRIMARY_URL = 'https://api.wheretheiss.at/v1/satellites/25544';
 
-// A second, independently-run, free, no-key ISS position API — used only
-// when Open Notify is unreachable. Two hobby APIs being down at once is
-// unlikely, so this turns "Open Notify is having an outage" from a dead app
-// into a same-second failover instead.
-const FALLBACK_URL = 'https://api.wheretheiss.at/v1/satellites/25544';
+// Fallback feed: Open Notify. Position only (lat/lon/timestamp). Plain http
+// on purpose: its HTTPS listener frequently refuses connections outright.
+const FALLBACK_URL = 'http://api.open-notify.org/iss-now.json';
 
-// In-memory cache so bursty client polling never hammers either upstream. A
-// 4s TTL sits comfortably under the observed ~5s update cadence.
+// Short in-memory cache so bursty polling from many open tabs never hammers
+// either upstream. wheretheiss.at asks clients to stay near 1 request/sec.
 const CACHE_MS = 4000;
 let cache = null; // { expires, payload }
 
-async function fetchOpenNotify() {
-  const response = await fetch(ISS_URL, { signal: AbortSignal.timeout(5000) });
-  if (!response.ok) throw new Error(`Open Notify responded ${response.status}`);
+function finiteOrNull(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+async function fetchPrimary() {
+  const response = await fetch(PRIMARY_URL, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) throw new Error(`wheretheiss.at responded ${response.status}`);
   const data = await response.json();
 
-  const lat = Number(data?.iss_position?.latitude);
-  const lon = Number(data?.iss_position?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    throw new Error('Open Notify returned a malformed position');
-  }
+  const lat = finiteOrNull(data?.latitude);
+  const lon = finiteOrNull(data?.longitude);
+  if (lat === null || lon === null) throw new Error('wheretheiss.at returned a malformed position');
 
-  return { lat, lon, timestampMs: (data.timestamp ?? Math.floor(Date.now() / 1000)) * 1000, source: 'open-notify' };
+  const ts = finiteOrNull(data?.timestamp);
+  return {
+    lat,
+    lon,
+    timestampMs: ts !== null ? ts * 1000 : Date.now(),
+    altitudeKm: finiteOrNull(data?.altitude),
+    velocityKmh: finiteOrNull(data?.velocity),
+    visibility: typeof data?.visibility === 'string' ? data.visibility : null,
+    source: 'wheretheiss.at',
+  };
 }
 
 async function fetchFallback() {
   const response = await fetch(FALLBACK_URL, { signal: AbortSignal.timeout(5000) });
-  if (!response.ok) throw new Error(`wheretheiss.at responded ${response.status}`);
+  if (!response.ok) throw new Error(`Open Notify responded ${response.status}`);
   const data = await response.json();
 
-  const lat = Number(data?.latitude);
-  const lon = Number(data?.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
-    throw new Error('wheretheiss.at returned a malformed position');
-  }
+  const lat = finiteOrNull(data?.iss_position?.latitude);
+  const lon = finiteOrNull(data?.iss_position?.longitude);
+  if (lat === null || lon === null) throw new Error('Open Notify returned a malformed position');
 
-  const timestampMs = Number.isFinite(Number(data?.timestamp)) ? Number(data.timestamp) * 1000 : Date.now();
-  return { lat, lon, timestampMs, source: 'wheretheiss.at' };
+  const ts = finiteOrNull(data?.timestamp);
+  return {
+    lat,
+    lon,
+    timestampMs: ts !== null ? ts * 1000 : Date.now(),
+    altitudeKm: null,
+    velocityKmh: null,
+    visibility: null,
+    source: 'open-notify',
+  };
 }
 
 router.get('/', async (_req, res) => {
@@ -60,9 +71,9 @@ router.get('/', async (_req, res) => {
 
     let position;
     try {
-      position = await fetchOpenNotify();
+      position = await fetchPrimary();
     } catch (primaryErr) {
-      console.error('[iss] open-notify failed, trying fallback:', primaryErr.message);
+      console.error('[iss] wheretheiss.at failed, trying Open Notify:', primaryErr.message);
       position = await fetchFallback();
     }
 

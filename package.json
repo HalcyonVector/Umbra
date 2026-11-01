@@ -2,7 +2,7 @@
   "name": "umbra",
   "private": true,
   "version": "1.0.0",
-  "description": "A living cartography and visibility predictor for the ISS's real orbit: a growing ground-track weave, real orbital-mechanics-derived telemetry, and a genuine \"when can I see it from here\" pass predictor (Open Notify).",
+  "description": "Live ISS tracker and naked-eye pass predictor: a real-time map of the International Space Station, its crew, and when you can see it from where you are.",
   "scripts": {
     "install:all": "npm install --prefix server && npm install --prefix client",
     "dev": "concurrently -k -n SERVER,CLIENT -c blue,green \"cross-env PORT=3003 npm run dev --prefix server\" \"npm run dev --prefix client\"",
@@ -13,5 +13,8 @@
   "devDependencies": {
     "concurrently": "^9.1.0",
     "cross-env": "^7.0.3"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

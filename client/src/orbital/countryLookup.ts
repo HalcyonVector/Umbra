@@ -10,14 +10,14 @@ export interface CountryGeometry {
 export interface CountryFeature {
   name: string;
   geometry: CountryGeometry;
-  /** [minLon, minLat, maxLon, maxLat] — computed once and cached alongside the feature for a fast reject before the precise test. */
+  /** [minLon, minLat, maxLon, maxLat], computed once and cached alongside the feature for a fast reject before the precise test. */
   bbox: [number, number, number, number];
 }
 
 /**
  * Standard ray-casting point-in-polygon test against a single ring (works
  * for the outer ring; a point "inside" a hole ring is treated as inside the
- * hole, so callers XOR outer/hole results — see pointInPolygon).
+ * hole, so callers XOR outer/hole results, see pointInPolygon).
  *
  * Rings that cross the antimeridian (Fiji, Russia's far-east lobe, etc.)
  * store raw coordinates that jump from ~180 to ~-180 between consecutive
@@ -27,7 +27,7 @@ export interface CountryFeature {
  * Unwrapping this ring's own longitude sequence, then testing the query
  * point against whichever +-360 equivalent lands nearest this ring's own
  * coordinates, fixes that without touching how rings are stored elsewhere
- * (bbox included — computeBBox is a separate, cheap pre-filter, and an
+ * (bbox included, computeBBox is a separate, cheap pre-filter, and an
  * over-wide bbox for a dateline-crossing ring just means this precise test
  * runs a bit more often, not that it can return a wrong answer).
  */
@@ -105,13 +105,13 @@ function inBBox(lon: number, lat: number, bbox: [number, number, number, number]
  * Finds which country (if any) a lon/lat point falls inside, against a list
  * of pre-processed CountryFeature records. A bounding-box reject runs first
  * so the precise ray-casting test only ever runs against the handful of
- * candidates whose bbox could plausibly contain the point — this project's
+ * candidates whose bbox could plausibly contain the point, this project's
  * source ISS ground track spends most of its time over open ocean, where
  * this returns null in one cheap bbox pass per country.
  *
  * NOTE: this deliberately does not special-case the antimeridian (a
  * country's bbox that wraps from +180 to -180, e.g. Fiji or Russia's far
- * east, can under-match near the seam) — a known, minor limitation, in the
+ * east, can under-match near the seam), a known, minor limitation, in the
  * same spirit as Fault-Line's coarse rectangular tectonic-region boxes.
  */
 export function findCountryAt(lon: number, lat: number, countries: CountryFeature[]): string | null {

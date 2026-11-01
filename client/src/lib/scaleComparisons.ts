@@ -1,5 +1,5 @@
 /**
- * Relatable framing for raw telemetry numbers — the app already computes
+ * Relatable framing for raw telemetry numbers, the app already computes
  * real orbital speed and altitude; these turn them into comparisons a
  * reader can feel rather than just read as digits.
  */

@@ -4,13 +4,10 @@ import type { IssFeedResponse, IssPosition } from '../types';
 const POLL_MS = 5000;
 
 /**
- * Polls the server's Open Notify proxy (GET /api/iss) on an interval.
- * Open Notify itself has no documented rate limit or update-cadence SLA —
- * observed behavior is roughly a fresh position every ~5s, sometimes with
- * gaps — and the server caches for ~4s (see server/src/routes/iss.js), so
- * this poll cadence is deliberately matched to that, not aggressive. The
- * caller is responsible for noticing when `position.timestampMs` actually
- * changed (a new sample) vs. a cached repeat.
+ * Polls the server's ISS position proxy (GET /api/iss) on an interval. The
+ * server caches for ~4s (see server/src/routes/iss.js), so this cadence is
+ * matched to that. The caller is responsible for noticing when
+ * `position.timestampMs` actually changed (a new sample) vs. a cached repeat.
  */
 export function useIssFeed(pollMs: number = POLL_MS) {
   const [position, setPosition] = useState<IssPosition | null>(null);

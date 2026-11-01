@@ -3,7 +3,7 @@ import App from './App';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 
-// React's own error boundary only catches errors thrown during render — not
+// React's own error boundary only catches errors thrown during render, not
 // in event handlers, useEffect callbacks, timers, or rejected promises,
 // which is most of this app's actual runtime logic (ISS polling, Leaflet's
 // own internal handlers, etc.). Anything thrown there today just becomes a
@@ -24,6 +24,7 @@ function showDiagnosticBanner(title: string, detail: string) {
   document.body.appendChild(banner);
 }
 
+if (import.meta.env.DEV) {
 window.addEventListener('error', (event) => {
   showDiagnosticBanner(
     `Uncaught error: ${event.message}`,
@@ -38,16 +39,17 @@ window.addEventListener('unhandledrejection', (event) => {
     reason instanceof Error ? (reason.stack ?? reason.message) : String(reason),
   );
 });
+}
 
-// Intentionally not wrapped in <React.StrictMode>: it double-invokes effects
-// in dev, which tears down and rebuilds the Tone.js audio graph mid-session.
+// Not wrapped in <React.StrictMode>: its dev-only double effect run would
+// create and destroy the Leaflet map twice on every load.
 createRoot(document.getElementById('root')!).render(
   <ErrorBoundary>
     <App />
   </ErrorBoundary>,
 );
 
-// Only register in production builds — in dev this would cache Vite's
+// Only register in production builds, in dev this would cache Vite's
 // module graph and fight with HMR.
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {

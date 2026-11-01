@@ -14,7 +14,7 @@ interface State {
  * A last-resort safety net. Something meant to be left running unattended
  * shouldn't white-screen silently if a component throws; this at least
  * tells you it broke and offers a way back. The error text is shown
- * directly in the fallback (not just logged to console) — this is a
+ * directly in the fallback (not just logged to console), this is a
  * single-user hobby project with no sensitive data behind it, and a
  * console-only error is easy to miss if DevTools isn't already open.
  */

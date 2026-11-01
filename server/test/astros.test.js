@@ -7,6 +7,21 @@ async function freshApp() {
   return createApp();
 }
 
+function mockPrimaryResponse() {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({
+      number: 2,
+      iss_expedition: 73,
+      people: [
+        { name: 'Test Astronaut One', agency: 'NASA', position: 'Commander', spacecraft: 'Crew Dragon', iss: true, country: 'United States' },
+        { name: 'Test Astronaut Two', agency: 'CMSA', position: 'Flight Engineer', iss: false, country: 'China' },
+      ],
+    }),
+  };
+}
+
 function mockAstrosResponse() {
   return {
     ok: true,
@@ -27,8 +42,24 @@ describe('GET /api/astros', () => {
     vi.unstubAllGlobals();
   });
 
-  it('normalizes the crew census', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => mockAstrosResponse()));
+  it('normalizes the detailed roster from the primary feed', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => mockPrimaryResponse()));
+    const app = await freshApp();
+
+    const res = await request(app).get('/api/astros');
+    expect(res.status).toBe(200);
+    expect(res.body.count).toBe(2);
+    expect(res.body.expedition).toBe(73);
+    expect(res.body.source).toBe('people-in-space');
+    expect(res.body.people[0]).toEqual({ name: 'Test Astronaut One', craft: 'Crew Dragon', agency: 'NASA', role: 'Commander', country: 'United States' });
+    expect(res.body.people[1].craft).toBe('Unknown');
+  });
+
+  it('falls back to Open Notify when the primary roster is unavailable', async () => {
+    const fetchMock = vi.fn()
+      .mockImplementationOnce(async () => ({ ok: false, status: 404 }))
+      .mockImplementationOnce(async () => mockAstrosResponse());
+    vi.stubGlobal('fetch', fetchMock);
     const app = await freshApp();
 
     const res = await request(app).get('/api/astros');
@@ -36,7 +67,8 @@ describe('GET /api/astros', () => {
     expect(res.body.cached).toBe(false);
     expect(res.body.count).toBe(7);
     expect(res.body.people).toHaveLength(2);
-    expect(res.body.people[0]).toEqual({ name: 'Test Astronaut One', craft: 'ISS' });
+    expect(res.body.people[0]).toEqual({ name: 'Test Astronaut One', craft: 'ISS', agency: null, role: null, country: null });
+    expect(res.body.source).toBe('open-notify');
   });
 
   it('serves a cached response on the next request without calling fetch again', async () => {

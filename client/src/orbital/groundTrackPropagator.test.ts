@@ -5,7 +5,7 @@ import { ISS_MEAN_PERIOD_MIN } from './orbitalMechanics';
 
 const EPOCH = Date.parse('2026-01-01T00:00:00Z');
 
-describe('propagateSubSatellitePoint — geometric sanity', () => {
+describe('propagateSubSatellitePoint, geometric sanity', () => {
   const elements: OrbitalElements = {
     inclinationDeg: ISS_INCLINATION_DEG,
     periodMinutes: ISS_MEAN_PERIOD_MIN,
@@ -46,11 +46,11 @@ describe('propagateSubSatellitePoint — geometric sanity', () => {
     const periodMs = ISS_MEAN_PERIOD_MIN * 60_000;
     const t1 = propagateSubSatellitePoint(elements, EPOCH + periodMs);
     expect(t1.lat).toBeCloseTo(t0.lat, 3);
-    // Longitude does NOT repeat exactly — Earth rotated underneath during one orbit — only latitude does.
+    // Longitude does NOT repeat exactly, Earth rotated underneath during one orbit, only latitude does.
   });
 });
 
-describe('deriveOrbitalElements / propagateSubSatellitePoint — round trip', () => {
+describe('deriveOrbitalElements / propagateSubSatellitePoint, round trip', () => {
   const groundTruth: OrbitalElements = {
     inclinationDeg: ISS_INCLINATION_DEG,
     periodMinutes: ISS_MEAN_PERIOD_MIN,

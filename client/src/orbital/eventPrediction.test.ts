@@ -141,7 +141,7 @@ describe('predictLocalTwilightTransition', () => {
   it('finds a transition to dark for an observer currently in daylight near the terminator', () => {
     const date = new Date(EPOCH);
     const sub = subsolarPoint(date);
-    // Just inside the daylight side of the terminator — should cross into dark soon.
+    // Just inside the daylight side of the terminator, should cross into dark soon.
     const observer = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM - 200);
     expect(solarElevationDeg(observer.lat, observer.lon, date)).toBeGreaterThan(-6);
 
@@ -186,7 +186,7 @@ describe('predictLocalTwilightTransition', () => {
 describe('findBestViewingSpotNow', () => {
   const date = new Date(EPOCH);
   const sub = subsolarPoint(date);
-  // A sub-satellite point 300km into the daylight side of the terminator —
+  // A sub-satellite point 300km into the daylight side of the terminator -
   // sunlit, but close enough that part of a 1200km ring around it reaches
   // well past the terminator into genuine darkness.
   const issSub = destinationPoint(sub.lat, sub.lon, 90, QUARTER_CIRCUMFERENCE_KM - 300);

@@ -1,14 +1,14 @@
 // Minimal app-shell service worker: stale-while-revalidate for same-origin
-// GET requests, and it deliberately never touches /api/* — ISS position,
+// GET requests, and it deliberately never touches /api/*, ISS position,
 // crew census, and presets must always hit the network, never a stale cache.
 //
 // Cache name bumped so returning visitors evict whatever the old
-// stale-while-revalidate-for-everything worker (v1) had cached — under that
+// stale-while-revalidate-for-everything worker (v1) had cached, under that
 // version, index.html itself was served stale, and since it references a
 // content-hashed JS/CSS bundle filename that changes on every deploy, a
 // cached index.html kept pointing at old, still-cached bundle files. A
 // visitor could stay stuck on a build from several deploys ago indefinitely.
-const CACHE_NAME = 'umbra-v2';
+const CACHE_NAME = 'umbra-v3';
 const APP_SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 self.addEventListener('install', (event) => {
