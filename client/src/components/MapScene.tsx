@@ -106,19 +106,34 @@ function buildFadingSegments(unwrapped: [number, number][], count: number): Trai
 // examples use), well past the ISS's real +-51.6deg range.
 const POLAR_EDGE_LAT = 85;
 
-/** A closed polygon tracing the real computed terminator (see orbital/solarTerminator.ts) from edge to edge, for the night-side shading overlay. */
+// The night polygon spans three world widths (-540..540 deg) so the shading
+// stays continuous when the view sits across the antimeridian. A single
+// -180..180 copy left the far side of the 180 deg line unshaded, drawing a
+// hard vertical edge through the Pacific.
+const NIGHT_SPAN_WORLDS = 3;
+const NIGHT_SAMPLES_PER_WORLD = 180;
+
+/** A closed polygon tracing the real computed terminator (see orbital/solarTerminator.ts), repeated across several world copies, for the night-side shading overlay. */
 function buildNightPolygon(nowMs: number): [number, number][] {
   const date = new Date(nowMs);
   const declination = solarDeclinationDeg(date);
   const edgeLat = declination >= 0 ? -POLAR_EDGE_LAT : POLAR_EDGE_LAT;
+  const halfSpan = (NIGHT_SPAN_WORLDS * 360) / 2;
+  const samples = NIGHT_SPAN_WORLDS * NIGHT_SAMPLES_PER_WORLD;
 
   const curve: [number, number][] = [];
-  for (let i = 0; i <= 180; i++) {
-    const lon = -180 + (i / 180) * 360;
+  for (let i = 0; i <= samples; i++) {
+    const lon = -halfSpan + (i / samples) * 2 * halfSpan;
     const lat = Math.max(-POLAR_EDGE_LAT, Math.min(POLAR_EDGE_LAT, terminatorLatitudeDeg(lon, date)));
     curve.push([lat, lon]);
   }
-  return [[edgeLat, -180], ...curve, [edgeLat, 180]];
+  return [[edgeLat, -halfSpan], ...curve, [edgeLat, halfSpan]];
+}
+
+/** Re-centers the (centered-on-0) night polygon on the world copy nearest the view. */
+function shiftNightPolygon(latlngs: [number, number][], referenceLon: number): [number, number][] {
+  const shift = Math.round(referenceLon / 360) * 360;
+  return shift === 0 ? latlngs : latlngs.map(([lat, lon]) => [lat, lon + shift]);
 }
 
 interface MapSceneProps {
@@ -244,7 +259,7 @@ export function MapScene({
         predictedLineRef.current.setLatLngs(shiftLatLngs(rawPredictedRef.current, referenceLon));
       }
       if (rawNightRef.current.length > 0 && nightLayerRef.current) {
-        nightLayerRef.current.setLatLngs(shiftLatLngs(rawNightRef.current, referenceLon));
+        nightLayerRef.current.setLatLngs(shiftNightPolygon(rawNightRef.current, referenceLon));
       }
       const lines = observedLineRefs.current;
       rawObservedSegmentsRef.current.forEach((seg, i) => {
@@ -344,7 +359,7 @@ export function MapScene({
     if (!map) return;
     const raw = buildNightPolygon(nowMs);
     rawNightRef.current = raw;
-    const latlngs = shiftLatLngs(raw, map.getCenter().lng);
+    const latlngs = shiftNightPolygon(raw, map.getCenter().lng);
     if (!nightLayerRef.current) {
       nightLayerRef.current = L.polygon(latlngs, { color: 'transparent', weight: 0, fillColor: NIGHT_FILL, fillOpacity: 0.42, interactive: false }).addTo(map);
     } else {
