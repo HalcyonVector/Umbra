@@ -154,7 +154,7 @@ export function PassPanel({
           </div>
         ) : (
           <p className="muted">
-            {!telemetryReady ? 'Waiting for live telemetry to work out the orbit.' : 'No passes bright enough in the next 10 days from here. Try a lower minimum elevation.'}
+            {!telemetryReady ? 'Measuring the orbit from the live feed. This takes two position fixes, about 10 seconds.' : 'No passes bright enough in the next 10 days from here. Try a lower minimum elevation.'}
           </p>
         )}
 
@@ -177,7 +177,7 @@ export function PassPanel({
             <span className="card-hint">min {minElevationDeg}° elevation</span>
           </header>
           {!telemetryReady ? (
-            <p className="muted">Waiting for live telemetry.</p>
+            <p className="muted">Measuring the orbit, about 10 seconds.</p>
           ) : upcoming.length === 0 ? (
             <p className="muted">Nothing upcoming in the prediction window.</p>
           ) : (

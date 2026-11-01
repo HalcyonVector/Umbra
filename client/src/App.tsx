@@ -241,12 +241,15 @@ export default function App() {
   // Counts the instant the continuously-ticking solar computation says the
   // ISS actually crossed the terminator, a detected, not merely reported, event.
   useEffect(() => {
+    // Before the first fix, isDaylight is a placeholder, not a reading, so
+    // the first real value must not count as a sunrise or sunset.
+    if (!telemetry.position) return;
     const prevDaylight = prevDaylightRef.current;
     prevDaylightRef.current = telemetry.isDaylight;
     if (prevDaylight === null || prevDaylight === telemetry.isDaylight) return;
     if (telemetry.isDaylight) setSunriseCount((n) => n + 1);
     else setSunsetCount((n) => n + 1);
-  }, [telemetry.isDaylight]);
+  }, [telemetry.isDaylight, telemetry.position === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Countries overflown this session, a running list, order of first sight.
   useEffect(() => {

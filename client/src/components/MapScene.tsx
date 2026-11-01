@@ -4,16 +4,15 @@ import 'leaflet/dist/leaflet.css';
 import { solarDeclinationDeg, terminatorLatitudeDeg } from '../orbital/solarTerminator';
 import type { LatLonLike } from '../map/projection';
 
-// A real, fully-detailed basemap (roads, labels, borders, coastlines) via
-// Leaflet + CARTO's free "Dark Matter" tiles (built on OpenStreetMap data) -
-// no API key, no billing account required. The literal Google Maps API
-// needs a Google Cloud project with billing enabled, which only the account
-// owner can create; this is the closest free equivalent, and it's the same
-// underlying technology (tiled raster map, pan/zoom, real cartography)
-// rather than a hand-rolled projection.
-const TILE_URL = 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+// Basemap: Esri's World Dark Gray Canvas, a free tiled basemap that needs no
+// API key (CARTO's dark tiles started requiring one for non-localhost
+// sites). Place names come as a separate transparent layer drawn above the
+// night shading so they stay readable on the dark side.
+const BASE_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+const LABEL_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Reference/MapServer/tile/{z}/{y}/{x}';
 const TILE_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions" target="_blank" rel="noreferrer">CARTO</a>';
+  'Basemap &copy; <a href="https://www.esri.com" target="_blank" rel="noreferrer">Esri</a>, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors';
+const TILE_MAX_NATIVE_ZOOM = 16;
 
 const OBSERVED_TRAIL_COLOR = '#a5b4fc';
 const PREDICTED_TRAIL_COLOR = '#5eead4';
@@ -159,7 +158,7 @@ const OBSERVER_ICON = L.divIcon({
 });
 
 /**
- * The map is a real, standard tiled basemap (Leaflet + CARTO dark tiles) -
+ * The map is a real, standard tiled basemap (Leaflet + Esri Dark Gray Canvas tiles) -
  * actual coastlines, borders, place names, at full cartographic fidelity -
  * with the ISS's live position (a pulsing marker), its growing "living
  * cartography" ground track (persisted across sessions, see
@@ -221,7 +220,14 @@ export function MapScene({
       onPickRef.current({ lat: Math.max(-85, Math.min(85, e.latlng.lat)), lon: normalizeLon(e.latlng.lng) });
     });
 
-    L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, subdomains: 'abcd', maxZoom: 20 }).addTo(map);
+    L.tileLayer(BASE_TILE_URL, { attribution: TILE_ATTRIBUTION, maxNativeZoom: TILE_MAX_NATIVE_ZOOM, maxZoom: 18 }).addTo(map);
+
+    // Labels sit in their own pane above the overlay pane (night shading,
+    // trails) but below markers, and never intercept clicks.
+    const labelPane = map.createPane('labels');
+    labelPane.style.zIndex = '450';
+    labelPane.style.pointerEvents = 'none';
+    L.tileLayer(LABEL_TILE_URL, { pane: 'labels', maxNativeZoom: TILE_MAX_NATIVE_ZOOM, maxZoom: 18 }).addTo(map);
 
     mapRef.current = map;
 

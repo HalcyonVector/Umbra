@@ -7,7 +7,7 @@ Umbra shows where the ISS is right now on a real world map, who is on board, and
 ## Features
 
 ### Live dashboard
-- **Full-screen live map** (Leaflet with CARTO dark tiles) with the station's position, the track it has already flown, a dotted preview of the next 3 hours, and the night side of Earth shaded in real time.
+- **Full-screen live map** (Leaflet with Esri Dark Gray Canvas tiles) with the station's position, the track it has already flown, a dotted preview of the next 3 hours, and the night side of Earth shaded in real time.
 - **Follow mode** keeps the station centered. Drag the map and it lets go; one click brings it back.
 - **Headline telemetry**: the country (or ocean) it is over, measured altitude and speed, whether the station is in sunlight or Earth's shadow, and progress through the current ~93 minute orbit.
 - **Live feed status** in the header, so you always know if the data is fresh.
@@ -46,7 +46,7 @@ Umbra derives the orbit from consecutive live position fixes and the station's k
 | --- | --- | --- |
 | ISS position, altitude, speed | [wheretheiss.at](https://wheretheiss.at/w/developer) | [Open Notify](http://open-notify.org/) (position only) |
 | Crew roster | [people-in-space](https://github.com/corquaid/international-space-station-APIs) | Open Notify `astros.json` |
-| Map tiles | [CARTO](https://carto.com/attributions) on [OpenStreetMap](https://www.openstreetmap.org/copyright) data | none |
+| Map tiles | [Esri World Dark Gray Canvas](https://www.esri.com) (no key needed) | none |
 | Country borders | [world-atlas](https://github.com/topojson/world-atlas) (bundled, offline) | none |
 
 All are free and need no API key. The Express server proxies and caches the live feeds (4 seconds for position, 10 minutes for crew) so many open tabs never hammer the upstream services, and it switches to the fallback automatically if the primary is down.
@@ -56,7 +56,7 @@ All are free and need no API key. The Express server proxies and caches the live
 | Layer | Choice |
 | --- | --- |
 | Frontend | React 18, TypeScript, Vite |
-| Map | Leaflet with CARTO Dark Matter tiles |
+| Map | Leaflet with Esri Dark Gray Canvas tiles |
 | Backend | Node.js, Express |
 | Tests | Vitest, Supertest |
 | Hosting | Render (blueprint in `render.yaml`) |
