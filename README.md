@@ -130,7 +130,7 @@ umbra/
 
 Umbra is a hobby and learning project, not a scientific or safety tool.
 
-- **Simplified orbit model.** Predictions assume a circular orbit at a fixed inclination and ignore drag and J2 nodal precession. They are good for planning an evening of skywatching, but drift over multiple days. Use a TLE-based tool such as Heavens-Above or NASA's Spot the Station for exact times.
+- **Simplified orbit model.** Predictions assume a circular orbit at a fixed inclination, including the orbit plane's ~5 degree per day drift (J2 nodal precession) but not atmospheric drag. They are good for planning an evening of skywatching and get less precise a few days out. Use a TLE-based tool such as Heavens-Above or NASA's Spot the Station for exact times.
 - **No refraction.** The sunlight and twilight calculations ignore atmospheric refraction, so times right at the edges can be off by a little.
 - **Coarse borders.** "Currently over" uses simplified 110m-resolution country outlines, so it can be wrong near coastlines and borders.
 - **Free upstream services.** The data feeds have no uptime guarantees. When both the primary and the fallback are down the header shows "Signal lost" and the app keeps propagating the last known orbit rather than inventing data.
